@@ -6,7 +6,7 @@
 <title>Bildol Gold Terminal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="style.css?v=352b89136e">
+<link rel="stylesheet" href="style.css?v=696d12db0c">
 <meta name="robots" content="noindex,nofollow">
 <meta name="theme-color" content="#0b0e12">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -60,7 +60,7 @@
       <div class="chartinfo" id="chartInfo">—</div>
       <div class="sigcount" id="sigCount">0 tín hiệu</div>
     </div>
-    <div class="cvdhead"><span>CVD phiên</span><b id="cvdVal">—</b><span id="cvdDiv" class="tag">—</span><span class="muted small">Cột = delta mỗi nến (mua chủ động − bán chủ động)</span></div>
+    <div class="cvdhead"><span>CVD phiên</span><b id="cvdVal">—</b><span id="cvdDiv" class="tag">—</span><span class="muted small">Cột = delta mỗi nến (mua chủ động − bán chủ động)</span><span class="bigflow" title="Lệnh lớn (Smart Money): các giao dịch khớp trên Binance có khối lượng ≥ ngưỡng (phân vị 99% gần đây, tối thiểu ≈ 50,000 USD). Đường tím = CVD lệnh lớn trong phiên (thang trái). Chỉ đại diện một phần dòng tiền COMEX/OTC.">Lệnh lớn <span id="bigVal">đang thu thập…</span></span></div>
     <div id="cvd" class="cvd"></div>
   </section>
 
@@ -73,8 +73,8 @@
       </header>
       <div class="tablewrap"><table class="prof" id="prof">
         <thead>
-          <tr class="grp"><th colspan="2"></th><th colspan="2" class="c">CALL</th><th colspan="2" class="p">PUT</th><th colspan="2">EXPO</th><th></th><th></th><th colspan="8">GREEKS (call, kỳ gần nhất)</th></tr>
-          <tr><th>Giá XAU</th><th>Strike gốc</th><th>OI</th><th>Vol</th><th>OI</th><th>Vol</th><th>GEX</th><th>DEX</th><th>IV</th><th>ΔOI</th><th title="Số ngày tới đáo hạn của kỳ dùng để tính Greeks">DTE</th><th title="Delta call">Δ</th><th title="Gamma: delta đổi bao nhiêu khi giá đổi 1 USD">Γ</th><th title="USD giá option đổi khi IV tăng 1 điểm">Vega</th><th title="Delta đổi khi IV tăng 1 điểm">Vanna</th><th title="Theta call: USD giá option mất đi sau 1 ngày">Θ/ngày</th><th title="Rho call: USD giá option đổi khi lãi suất tăng 1%">ρ</th><th title="Charm call: delta đổi sau 1 ngày (giá, IV đứng yên)">Charm</th></tr>
+          <tr class="grp"><th colspan="2"></th><th colspan="2" class="c">CALL</th><th colspan="2" class="p">PUT</th><th colspan="2">EXPO</th><th></th><th></th><th></th><th colspan="8">GREEKS (call, kỳ gần nhất)</th></tr>
+          <tr><th>Giá XAU</th><th>Strike gốc</th><th>OI</th><th>Vol</th><th>OI</th><th>Vol</th><th>GEX</th><th>DEX</th><th>IV</th><th>ΔOI</th><th title="Spread Bid/Ask CALL · PUT (kỳ gần nhất), % so với giá giữa. Chỉ GLD có (giờ Mỹ). Vàng = thanh khoản kém (≥ 15%)">B/A C·P</th><th title="Số ngày tới đáo hạn của kỳ dùng để tính Greeks">DTE</th><th title="Delta call">Δ</th><th title="Gamma: delta đổi bao nhiêu khi giá đổi 1 USD">Γ</th><th title="USD giá option đổi khi IV tăng 1 điểm">Vega</th><th title="Delta đổi khi IV tăng 1 điểm">Vanna</th><th title="Theta call: USD giá option mất đi sau 1 ngày">Θ/ngày</th><th title="Rho call: USD giá option đổi khi lãi suất tăng 1%">ρ</th><th title="Charm call: delta đổi sau 1 ngày (giá, IV đứng yên)">Charm</th></tr>
         </thead>
         <tbody></tbody>
       </table></div>
@@ -138,6 +138,6 @@
 
 <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <script src="smc.js?v=d7d89a76e0"></script>
-<script src="app.js?v=b77b445653"></script>
+<script src="app.js?v=f6d53ebaa0"></script>
 </body>
 </html>

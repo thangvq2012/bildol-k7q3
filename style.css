@@ -74,6 +74,9 @@ button.sell { background: #2c1312; color: var(--down); border-color: #5e2a27; fo
 .cvdhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font: 600 12px var(--f-label); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .cvdhead b { font: 600 13px var(--f-data); color: var(--fg); letter-spacing: 0; }
 .cvdhead .small { text-transform: none; letter-spacing: 0; font-family: var(--f-body); font-weight: 400; }
+.prof td.warnc { color: var(--warn); }
+.cvdhead .bigflow { margin-left: auto; text-transform: none; letter-spacing: 0; font: 500 12px var(--f-body); color: var(--violet); }
+.cvdhead .bigflow b { font-family: var(--f-data); }
 .cvd { height: 120px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .tag { border-radius: 4px; padding: 1px 8px; border: 1px solid var(--line); text-transform: none; letter-spacing: 0; font: 500 12px var(--f-body); }
 .tag.bear { color: var(--down); border-color: #5e2a27; } .tag.bull { color: var(--up); border-color: #1e5a44; }

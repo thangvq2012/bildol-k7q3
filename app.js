@@ -59,7 +59,7 @@ function baseOpts() {
     crosshair: { mode: 0 },
   };
 }
-let chart, candleS, cvdChart, cvdLine, deltaHist;
+let chart, candleS, cvdChart, cvdLine, deltaHist, bigLine;
 function initCharts() {
   chart = LC.createChart($("#chart"), baseOpts());
   candleS = chart.addCandlestickSeries({ upColor: C.up, downColor: C.down, borderVisible: false, wickUpColor: C.up, wickDownColor: C.down, priceFormat: { type: "price", precision: 2, minMove: 0.01 } });
@@ -67,6 +67,10 @@ function initCharts() {
   deltaHist = cvdChart.addHistogramSeries({ priceScaleId: "delta", priceFormat: { type: "volume" } });
   cvdChart.priceScale("delta").applyOptions({ scaleMargins: { top: 0.55, bottom: 0 } });
   cvdLine = cvdChart.addLineSeries({ color: C.gc, lineWidth: 2, priceFormat: { type: "volume" } });
+  // CVD lệnh lớn (oz) – thang riêng bên trái
+  bigLine = cvdChart.addLineSeries({ color: C.gld, lineWidth: 2, priceScaleId: "big", priceFormat: { type: "volume" }, title: "Lệnh lớn" });
+  cvdChart.priceScale("big").applyOptions({ visible: true, scaleMargins: { top: 0.08, bottom: 0.5 } });
+  cvdChart.applyOptions({ leftPriceScale: { visible: false } });
   let syncing = false;
   const link = (a, b) => a.timeScale().subscribeVisibleLogicalRangeChange((r) => {
     if (syncing || !r) return; syncing = true; b.timeScale().setVisibleLogicalRange(r); syncing = false;
@@ -260,6 +264,7 @@ function onCandle(c, closed) {
   paperTick(x.close);
   renderQuote();
   if (closed) {
+    renderBig();
     if (STATIC) staticRecompute();
     const s = evaluate(a.length - 1, true);
     if (s) addSignal(s, true);
@@ -305,6 +310,7 @@ function drawAll() {
 
 async function startFeed() {
   stopFeeds();
+  setTimeout(startBig, 1500);
   const demo = !!S.state?.demo;
   const ok = !demo && (await loadHistory());
   if (!ok) demoHistory();
@@ -581,7 +587,9 @@ function evaluate(i, live) {
   const volSpike = vavg > 0 && k.vol >= sc.vol_spike_mult * vavg;
   const dxy = live ? (S.state?.macro?.DXY?.chg_n_pct ?? 0) : 0, dxyUp = dxy >= sc.dxy_thr_pct, dxyDn = dxy <= -sc.dxy_thr_pct;
   const doi = nearDoi(k.close), doiFlat = !!doi && doi.d_oi <= 0;
+  const bf = live ? bigFlow(sc.cvd_slope_bars) : null;   // lệnh lớn ròng (chỉ có dữ liệu cho nến live)
   const mkSig = (type, side, conf, sl, tp1, tp2) => {
+    if (bf) conf = { ...conf, [side === "BUY" ? "Lệnh lớn mua ròng" : "Lệnh lớn bán ròng"]: side === "BUY" ? bf.d > 0 : bf.d < 0 };
     const score = Object.values(conf).filter(Boolean).length;
     return score >= sc.min_confirm ? { i, time: k.time, type: "[Options Flow] " + type, side, conf, score, max: Object.keys(conf).length, entry: k.close, sl, tp1, tp2, live } : null;
   };
@@ -714,6 +722,7 @@ function renderAgent() {
   const L = a.L, dealer = a.neg ? "LP bán khi giá giảm → gia tốc" : "LP mua dip / bán rip → giữ biên";
   $("#decision").innerHTML = `<div class="act ${a.act.toLowerCase()}">${a.act}</div>
     <dl><dt>Regime</dt><dd>${a.regime}</dd><dt>Dealer</dt><dd>${dealer}</dd>
+    <dt>Lệnh lớn</dt><dd>${(() => { const f = bigFlow(S.cfg?.signals?.cvd_slope_bars ?? 5); return f ? `${f.d >= 0 ? "MUA" : "BÁN"} ròng ${Math.abs(f.d).toFixed(0)} oz (${f.n} lệnh ≥ ${S.big.thr?.toFixed(0)} oz)` : "đang thu thập"; })()}</dd>
     <dt>Hedge LP</dt><dd>${(() => { const v = hedgePer(a.p), z = hZoneAt(a.p); return v == null ? "—" : `≈ ${Math.abs(Math.round(v)).toLocaleString("en-US")} HĐ/${hedgeSt().win}$ (${hTier(v)}, ${v > 0 ? "−Γ gia tốc" : "+Γ hãm"})${z ? " · trong vùng hedge lớn" : ""}`; })()}</dd>
     <dt>Target</dt><dd>${fmt(a.target)} <span class="muted">(${esc(a.why)})</span></dd><dt>Conviction</dt><dd>${sgn(a.conv, 2)}</dd>
     ${S.smc ? `<dt>Cấu trúc</dt><dd>${esc(S.smc.struct)}</dd>` : ""}</dl>`;
@@ -754,9 +763,18 @@ function renderQuote() {
   chip("#chipSess", inUsSession(nowSec()) ? "ok" : "", "Phiên Mỹ " + S.cfg.signals.us_session_vn.join("–"));
 }
 
+// Bid/Ask theo strike (Bước 2): spread % so với giá giữa; ≥ 15% = thanh khoản kém (tô vàng)
+function baCell(s) {
+  const one = (b, a) => (b && a && a > 0 ? (200 * (a - b)) / (a + b) : null);
+  const c = one(s.c_bid, s.c_ask), p = one(s.p_bid, s.p_ask);
+  if (c == null && p == null) return `<td class="muted" title="Không có Bid/Ask (GC: CME miễn phí không có; GLD: ngoài giờ Mỹ Yahoo trả 0)">—</td>`;
+  const f = (x) => (x == null ? "—" : x.toFixed(0) + "%"), wide = (c ?? 0) >= 15 || (p ?? 0) >= 15;
+  const tip = `CALL bid ${s.c_bid ?? "—"} / ask ${s.c_ask ?? "—"}\nPUT bid ${s.p_bid ?? "—"} / ask ${s.p_ask ?? "—"}\nSpread = (ask − bid) / giá giữa (kỳ gần nhất)`;
+  return `<td class="${wide ? "warnc" : ""}" title="${tip}">${f(c)} · ${f(p)}</td>`;
+}
 function renderProfile() {
   const o = optV(S.profSrc), tb = $("#prof tbody");
-  if (!o) { tb.innerHTML = `<tr><td colspan="18" class="muted">${S.state && S.state.options_updated ? `Chưa có dữ liệu ${S.profSrc}. Xem dòng cảnh báo vàng phía trên để biết lý do, rồi bấm “Làm mới Options”.` : `Đang tải dữ liệu ${S.profSrc} lần đầu (1–2 phút)…`}</td></tr>`; $("#profMeta").textContent = "—"; return; }
+  if (!o) { tb.innerHTML = `<tr><td colspan="19" class="muted">${S.state && S.state.options_updated ? `Chưa có dữ liệu ${S.profSrc}. Xem dòng cảnh báo vàng phía trên để biết lý do, rồi bấm “Làm mới Options”.` : `Đang tải dữ liệu ${S.profSrc} lần đầu (1–2 phút)…`}</td></tr>`; $("#profMeta").textContent = "—"; return; }
   const p = lastPrice() ?? o.chart.gamma_flip;
   const maxG = Math.max(1, ...o.strikes.map((s) => Math.abs(s.net_gex)));
   const atm = o.strikes.reduce((b, s) => (b == null || Math.abs(s.chart - p) < Math.abs(b.chart - p) ? s : b), null);
@@ -768,7 +786,7 @@ function renderProfile() {
     return `<tr class="${cls}" ${s === atm ? 'id="atmRow"' : ""}><td class="xau">${fmt(s.chart)}${s.strike === o.call_wall ? " CW" : s.strike === o.put_wall ? " PW" : ""}</td><td class="muted">${s.strike}</td>
       <td>${fmtK(s.call_oi)}</td><td>${fmtK(s.call_vol)}</td><td>${fmtK(s.put_oi)}</td><td>${fmtK(s.put_vol)}</td>
       <td class="${s.net_gex >= 0 ? "gp" : "gn"}" style="background:linear-gradient(to left, ${hc} ${w}%, transparent ${w}%)">${fmtK(s.net_gex)}</td>
-      <td class="${s.dex >= 0 ? "gp" : "gn"}">${fmtK(s.dex)}</td><td>${s.iv ? (s.iv * 100).toFixed(1) + "%" : "—"}</td><td>${doi}</td>
+      <td class="${s.dex >= 0 ? "gp" : "gn"}">${fmtK(s.dex)}</td><td>${s.iv ? (s.iv * 100).toFixed(1) + "%" : "—"}</td><td>${doi}</td>${baCell(s)}
       <td class="muted">${n(s.dte, 0)}</td><td>${n(s.delta, 2)}</td><td>${n(s.gamma, 4)}</td><td>${n(s.vega, 2)}</td><td>${n(s.vanna, 4)}</td>
       <td class="gn">${n(s.theta, dTh)}</td><td>${n(s.rho, 3)}</td><td>${n(s.charm, 4)}</td></tr>`;
   }).join("");
@@ -835,6 +853,92 @@ async function renderPine() {
   } catch { $("#pineOut").innerHTML = `<p class="muted">Không lấy được đoạn mã.</p>`; }
 }
 
+
+
+// ─────────────────────────── Bước 5b: LỆNH LỚN ("Smart Money") — thay cho "Tách ID Order" ───────────────────────────
+// Không có nguồn miễn phí cho dữ liệu lệnh theo ID → đọc TỪNG GIAO DỊCH khớp (aggTrade) của feed Binance, tách các giao dịch
+// có khối lượng ≥ ngưỡng (tự động: max(phân vị 99% của 3,000 giao dịch gần nhất, giá trị tối thiểu config signals.big_trade_usd))
+// → "CVD lệnh lớn" = mua chủ động lớn − bán chủ động lớn (oz), cộng dồn theo phiên. Chạy cả trên bản web (trình duyệt tự nối).
+// Lưu ý: đây là dòng lệnh trên Binance (XAUUSDT/PAXG), chỉ đại diện một phần dòng tiền COMEX/OTC.
+S.big = { thr: null, sizes: [], byT: {}, ws: null, n: 0, since: null };
+const BIG_MIN_USD = () => S.cfg?.signals?.big_trade_usd ?? 50000;
+function bigThr(price) {
+  const a = S.big.sizes; if (!price) return null;
+  const floor = BIG_MIN_USD() / price;
+  if (a.length < 200) return floor;
+  const srt = [...a].sort((x, y) => x - y), p99 = srt[Math.floor(srt.length * 0.99)];
+  return Math.max(p99, floor);
+}
+function bigAdd(tMs, price, qty, sellAggr) {
+  const B = S.big; B.sizes.push(qty); if (B.sizes.length > 3000) B.sizes.shift();
+  if (B.sizes.length % 50 === 0 || B.thr == null) B.thr = bigThr(price);
+  if (B.thr == null || qty < B.thr) return false;
+  const step = TF_SEC[S.tf] || 900, ts = Math.floor(tMs / 1000);
+  const t = AGG[S.tf] ? SMC.bucketOf(ts, AGG[S.tf]) : Math.floor(ts / step) * step;   // 4h/1d neo 18:00 New York như nến
+  const e = B.byT[t] || (B.byT[t] = { d: 0, n: 0, buy: 0, sell: 0 });
+  const q = sellAggr ? -qty : qty; e.d += q; e.n++; if (q > 0) e.buy += qty; else e.sell += qty;
+  B.n++; return true;
+}
+function bigSeries() {
+  // CVD lệnh lớn theo phiên, gắn vào nến hiện có
+  const c = S.candles, out = []; let cum = 0, key = null;
+  for (const k of c) {
+    if (sessKey(k.time) !== key) { key = sessKey(k.time); cum = 0; }
+    const e = S.big.byT[k.time]; if (e) cum += e.d;
+    k.bigd = e ? e.d : 0; k.bign = e ? e.n : 0; k.bigcvd = cum;
+    if (S.big.since != null && k.time + (TF_SEC[S.tf] || 900) > S.big.since) out.push({ time: k.time + TZ, value: cum });
+  }
+  return out;
+}
+function bigFlow(n = 5) { // lệnh lớn ròng (oz) trong n nến gần nhất, chỉ tính khi đã có dữ liệu cho cả n nến
+  const c = S.candles; if (S.big.since == null || c.length < n) return null;
+  if (c[c.length - n].time < S.big.since - (TF_SEC[S.tf] || 900)) return null;
+  let d = 0, m = 0; for (const k of c.slice(-n)) { d += k.bigd || 0; m += k.bign || 0; }
+  return { d, n: m };
+}
+function renderBig() {
+  if (!bigLine) return;
+  bigLine.setData(bigSeries());
+  const el = $("#bigVal"); if (!el) return;
+  const f = bigFlow(S.cfg?.signals?.cvd_slope_bars ?? 5), thr = S.big.thr;
+  el.innerHTML = thr == null ? "đang thu thập…" : `≥ ${thr.toFixed(thr < 10 ? 1 : 0)} oz · ${f ? `${f.d >= 0 ? "MUA" : "BÁN"} ròng <b class="${f.d >= 0 ? "up" : "down"}">${Math.abs(f.d).toFixed(0)} oz</b> (${f.n} lệnh, ${S.cfg?.signals?.cvd_slope_bars ?? 5} nến)` : "chưa đủ dữ liệu"}`;
+}
+async function bigBackfill(f) {
+  // nạp lại giao dịch ~60 phút gần nhất (REST aggTrades), để có ngay CVD lệnh lớn khi vừa mở board
+  try {
+    const path = /fapi/.test(f.kpath) ? "/fapi/v1/aggTrades" : "/api/v3/aggTrades";
+    let start = Date.now() - 3600e3, from = null;
+    for (let page = 0; page < 12; page++) {
+      const url = from == null ? `${f.rest}${path}?symbol=${f.symbol}&startTime=${start}&endTime=${start + 3599e3}&limit=1000` : `${f.rest}${path}?symbol=${f.symbol}&fromId=${from}&limit=1000`;
+      const a = await (await fetch(url)).json(); if (!Array.isArray(a) || !a.length) break;
+      for (const x of a) bigAdd(x.T, +x.p, +x.q, !!x.m);
+      from = a[a.length - 1].a + 1; if (a.length < 1000) break;
+    }
+    S.big.since = Math.floor((Date.now() - 3600e3) / 1000);
+  } catch { S.big.since = Math.floor(Date.now() / 1000); }
+  renderBig();
+}
+function connectBig(i = 0) {
+  const f = S.feed || feeds()[0];
+  if (S.big.ws) { try { S.big.ws.onclose = null; S.big.ws.close(); } catch { } }
+  let urls = [f.ws, ...(f.ws_alt || [])];
+  if (/fstream\.binance\.com\/ws$/.test(f.ws)) urls = ["wss://fstream.binance.com/market/ws", f.ws];
+  const ws = new WebSocket(`${urls[i % urls.length]}/${f.symbol.toLowerCase()}@aggTrade`);
+  S.big.ws = ws;
+  let last = 0;
+  ws.onmessage = (ev) => {
+    const x = JSON.parse(ev.data); if (!x || x.e !== "aggTrade") return;
+    if (bigAdd(x.T, +x.p, +x.q, !!x.m) || Date.now() - last > 5000) { last = Date.now(); renderBig(); }
+  };
+  ws.onclose = () => { if (S.big.ws === ws) setTimeout(() => connectBig(i + 1), 5000); };
+  ws.onerror = () => ws.close();
+}
+function startBig() {
+  S.big = { thr: null, sizes: [], byT: {}, ws: S.big?.ws || null, n: 0, since: null };
+  if (S.state?.demo) return;
+  const f = S.feed || feeds()[0];
+  bigBackfill(f); connectBig(0);
+}
 
 // ─────────────────────────── Bản web tĩnh (GitHub Pages / điện thoại) ───────────────────────────
 // γ live: tính lại Gamma Black-76/BSM từng strike theo giá hiện tại từ "gói" (giống Pine v32, analytics.pack_gamma)
@@ -1223,7 +1327,7 @@ async function askAI() {
   const vavg = c.slice(-sc.vol_sma - 1, -1).reduce((a, x) => a + x.vol, 0) / sc.vol_sma, d = divAt(c.length - 1), ag = agentState();
   const body = {
     price: lastPrice(),
-    flow: { cvd_phien: last?.cvd, cvd_doc_5_nen: c.length > 6 ? last.cvd - c[c.length - 6].cvd : null, volume_so_voi_tb: vavg ? last.vol / vavg : null, phan_ky: d.bear ? "âm" : d.bull ? "dương" : "không", khung: S.tf, wall_chinh: S.primary, agent: ag ? { act: ag.act, regime: ag.regime, target: ag.target, conviction: ag.conv } : null,
+    flow: { lenh_lon: (() => { const f = bigFlow(sc.cvd_slope_bars); return f ? { nguong_oz: S.big.thr, rong_oz_5_nen: f.d, so_lenh: f.n, cvd_lenh_lon_phien: last?.bigcvd, ghi_chu: "giao dịch khớp ≥ ngưỡng trên Binance (đại diện một phần)" } : null; })(), cvd_phien: last?.cvd, cvd_doc_5_nen: c.length > 6 ? last.cvd - c[c.length - 6].cvd : null, volume_so_voi_tb: vavg ? last.vol / vavg : null, phan_ky: d.bear ? "âm" : d.bull ? "dương" : "không", khung: S.tf, wall_chinh: S.primary, agent: ag ? { act: ag.act, regime: ag.regime, target: ag.target, conviction: ag.conv } : null,
       smc: S.smc ? { cau_truc: S.smc.struct, ke_hoach: S.smc.plan, lenh: smcOrders().slice(-4).map((o) => ({ gio_vn: vnClock(S.candles[o.created]?.time ?? 0), loai: o.txt, huong: o.side, trang_thai: o.status, entry: o.entry, sl: o.sl, tp1: o.tp1, tp2: o.tp2, tp3: o.tp3 })) } : null },
     signals: S.signals.slice(-3).map((s) => ({ gio_vn: vnClock(s.time), loai: s.type, huong: s.side, diem: `${s.score}/${s.max}`, entry: s.entry, sl: s.sl, tp1: s.tp1, tp2: s.tp2 })),
     candles: c.slice(-30).map((x) => [vnClock(x.time), +x.open.toFixed(2), +x.high.toFixed(2), +x.low.toFixed(2), +x.close.toFixed(2), Math.round(x.vol), Math.round(x.delta)]),
