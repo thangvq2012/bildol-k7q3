@@ -859,22 +859,20 @@ async function renderPine() {
 
 // ─────────────────────────── Bước 5b: LỆNH LỚN ("Smart Money") — thay cho "Tách ID Order" ───────────────────────────
 // Không có nguồn miễn phí cho dữ liệu lệnh theo ID → đọc TỪNG GIAO DỊCH khớp (aggTrade) của feed Binance, tách các giao dịch
-// có khối lượng ≥ ngưỡng (tự động: max(phân vị 99% của 3,000 giao dịch gần nhất, giá trị tối thiểu config signals.big_trade_usd))
+// có giá trị ≥ ngưỡng CỐ ĐỊNH config signals.big_trade_usd (mặc định 50.000 USD), nạp lại từ đầu phiên (tối đa 8 giờ) → mọi máy cùng số liệu
 // → "CVD lệnh lớn" = mua chủ động lớn − bán chủ động lớn (oz), cộng dồn theo phiên. Chạy cả trên bản web (trình duyệt tự nối).
 // Lưu ý: đây là dòng lệnh trên Binance (XAUUSDT/PAXG), chỉ đại diện một phần dòng tiền COMEX/OTC.
-S.big = { thr: null, sizes: [], byT: {}, ws: null, n: 0, since: null };
+S.big = { thr: null, ids: new Set(), byT: {}, ws: null, n: 0, since: null };
 const BIG_MIN_USD = () => S.cfg?.signals?.big_trade_usd ?? 50000;
 function bigThr(price) {
-  const a = S.big.sizes; if (!price) return null;
-  const floor = BIG_MIN_USD() / price;
-  if (a.length < 200) return floor;
-  const srt = [...a].sort((x, y) => x - y), p99 = srt[Math.floor(srt.length * 0.99)];
-  return Math.max(p99, floor);
+  // ngưỡng CỐ ĐỊNH theo giá trị USD (config signals.big_trade_usd) → mọi máy/bản web đếm cùng một tập lệnh
+  return price ? BIG_MIN_USD() / price : null;
 }
-function bigAdd(tMs, price, qty, sellAggr) {
-  const B = S.big; B.sizes.push(qty); if (B.sizes.length > 3000) B.sizes.shift();
-  if (B.sizes.length % 50 === 0 || B.thr == null) B.thr = bigThr(price);
-  if (B.thr == null || qty < B.thr) return false;
+function bigAdd(tMs, price, qty, sellAggr, id) {
+  const B = S.big;
+  if (id != null) { if (B.ids.has(id)) return false; B.ids.add(id); if (B.ids.size > 200000) B.ids.clear(); }   // bỏ trùng giữa nạp lại (REST) và luồng trực tiếp (WS)
+  B.thr = bigThr(price);
+  if (qty * price < BIG_MIN_USD()) return false;
   const step = TF_SEC[S.tf] || 900, ts = Math.floor(tMs / 1000);
   const t = AGG[S.tf] ? SMC.bucketOf(ts, AGG[S.tf]) : Math.floor(ts / step) * step;   // 4h/1d neo 18:00 New York như nến
   const e = B.byT[t] || (B.byT[t] = { d: 0, n: 0, buy: 0, sell: 0, nb: 0, ns: 0 });
@@ -912,18 +910,32 @@ function renderBig() {
   el.innerHTML = thr == null ? "đang thu thập…" : `≥ ${thr.toFixed(thr < 10 ? 1 : 0)} oz · ${nb} nến: ${f ? `<b class="up">MUA ${fx(f.b)} oz</b> (${f.nb}) · <b class="down">BÁN ${fx(f.s)} oz</b> (${f.ns}) · ròng <b class="${f.d >= 0 ? "up" : "down"}">${f.d >= 0 ? "+" : "−"}${fx(Math.abs(f.d))}</b>` : "chưa đủ dữ liệu"}`;
 }
 async function bigBackfill(f) {
-  // nạp lại giao dịch ~60 phút gần nhất (REST aggTrades), để có ngay CVD lệnh lớn khi vừa mở board
+  // Nạp lại NGƯỢC từ hiện tại về đầu phiên (05:00 giờ VN), tối đa 6 giờ: các nến gần nhất (dùng cho "5 nến") luôn đủ,
+  // phần xa nhất có thể bị cắt nếu phiên quá nhiều giao dịch (giới hạn số trang) → S.big.since = mốc nến đã đủ dữ liệu.
+  const now = Math.floor(Date.now() / 1000), sess0 = sessKey(now) * 86400 - 2 * 3600;
+  const step = TF_SEC[S.tf] || 900, win = step * ((S.cfg?.signals?.cvd_slope_bars ?? 5) + 1);
+  const start = Math.floor(Math.max(Math.min(sess0, now - win), now - 6 * 3600) / step) * step;
+  const path = /fapi/.test(f.kpath) ? "/fapi/v1/aggTrades" : "/api/v3/aggTrades";
+  const get = async (q) => { const a = await (await fetch(`${f.rest}${path}?symbol=${f.symbol}${q}`)).json(); return Array.isArray(a) ? a : []; };
   try {
-    const path = /fapi/.test(f.kpath) ? "/fapi/v1/aggTrades" : "/api/v3/aggTrades";
-    let start = Date.now() - 3600e3, from = null;
-    for (let page = 0; page < 12; page++) {
-      const url = from == null ? `${f.rest}${path}?symbol=${f.symbol}&startTime=${start}&endTime=${start + 3599e3}&limit=1000` : `${f.rest}${path}?symbol=${f.symbol}&fromId=${from}&limit=1000`;
-      const a = await (await fetch(url)).json(); if (!Array.isArray(a) || !a.length) break;
-      for (const x of a) bigAdd(x.T, +x.p, +x.q, !!x.m);
-      from = a[a.length - 1].a + 1; if (a.length < 1000) break;
+    const last = await get("&limit=1"); if (!last.length) throw new Error("no trades");
+    const L = last[0].a; let minT = Infinity, minId = L + 1;
+    const MAXP = 300, PAR = 6;                         // tối đa 300.000 giao dịch, 6 yêu cầu song song
+    for (let k = 0; k < MAXP && minT > start * 1000 && minId > 0; k += PAR) {
+      const ids = []; for (let m = 0; m < PAR && k + m < MAXP; m++) { const fid = L + 1 - 1000 * (k + m + 1); if (fid + 1000 > 0) ids.push(Math.max(0, fid)); }
+      const pages = await Promise.all(ids.map((fid) => get(`&fromId=${fid}&limit=1000`)));
+      for (const a of pages) for (const x of a) {
+        if (x.T < start * 1000) continue;
+        bigAdd(x.T, +x.p, +x.q, !!x.m, x.a);
+        if (x.T < minT) minT = x.T; if (x.a < minId) minId = x.a;
+      }
+      if (pages.some((a) => a.length && a[0].T < start * 1000)) { minT = start * 1000; break; }
+      S.big.since = Math.ceil(minT / 1000 / step) * step; renderBig();
     }
-    S.big.since = Math.floor((Date.now() - 3600e3) / 1000);
-  } catch { S.big.since = Math.floor(Date.now() / 1000); }
+    S.big.since = minT <= start * 1000 ? start : Math.ceil(minT / 1000 / step) * step;
+    // bỏ phần nến bị cắt dở (trước mốc since) để không cộng thiếu
+    for (const t of Object.keys(S.big.byT)) if (+t < S.big.since) delete S.big.byT[t];
+  } catch { S.big.since = Math.ceil(now / step) * step; }
   renderBig();
 }
 function connectBig(i = 0) {
@@ -936,13 +948,13 @@ function connectBig(i = 0) {
   let last = 0;
   ws.onmessage = (ev) => {
     const x = JSON.parse(ev.data); if (!x || x.e !== "aggTrade") return;
-    if (bigAdd(x.T, +x.p, +x.q, !!x.m) || Date.now() - last > 5000) { last = Date.now(); renderBig(); }
+    if (bigAdd(x.T, +x.p, +x.q, !!x.m, x.a) || Date.now() - last > 5000) { last = Date.now(); renderBig(); }
   };
   ws.onclose = () => { if (S.big.ws === ws) setTimeout(() => connectBig(i + 1), 5000); };
   ws.onerror = () => ws.close();
 }
 function startBig() {
-  S.big = { thr: null, sizes: [], byT: {}, ws: S.big?.ws || null, n: 0, since: null };
+  S.big = { thr: null, ids: new Set(), byT: {}, ws: S.big?.ws || null, n: 0, since: null };
   if (S.state?.demo) return;
   const f = S.feed || feeds()[0];
   bigBackfill(f); connectBig(0);
