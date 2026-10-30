@@ -795,6 +795,11 @@ function renderWarn() {
   const errs = [...(S.state?.errors || []), ...warnExtra];
   if (S.state?.demo) errs.unshift("CHẾ ĐỘ DEMO: giá và Options là dữ liệu giả lập.");
   const w = $("#warn"); w.hidden = !errs.length; w.textContent = errs.join("  •  ");
+  // ghi chú (dùng bản lưu còn mới, cùng phiên) → dòng xám nhỏ, không phải cảnh báo
+  let n = $("#notes");
+  if (!n) { n = document.createElement("div"); n.id = "notes"; n.className = "notes"; w.after(n); }
+  const notes = S.state?.notes || [];
+  n.hidden = !notes.length; n.textContent = notes.length ? "ℹ " + notes.join("  •  ") : "";
 }
 function renderEngineChip() {
   const st = S.state;
