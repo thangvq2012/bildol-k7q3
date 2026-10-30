@@ -83,7 +83,13 @@ function initCharts() {
 // ─────────────────────────── dữ liệu giá ───────────────────────────
 // Nến lấy từ Binance (XAUUSDT) rồi cộng chênh lệch về XAUUSD giao ngay (S.basis) để khớp giá TradingView/broker
 const mk = (openMs, o, h, l, c, v, takerBuy) => { const b = S.basis || 0; return { time: Math.floor(openMs / 1000), open: o + b, high: h + b, low: l + b, close: c + b, vol: v, delta: 2 * takerBuy - v }; };
-function basisNow() { const b = S.state?.basis; return b && isFinite(b.value) ? b.value : 0; }
+function basisNow(sym) {
+  // chênh lệch XAUUSD giao ngay − giá nguồn nến, đo riêng cho TỪNG nguồn (XAUUSDT, PAXGUSDT) → nguồn dự phòng cũng khớp TradingView
+  const by = S.state?.basis_by, b = S.state?.basis;
+  if (sym && by && isFinite(by[sym])) return by[sym];
+  if (!sym || sym === feeds()[0].symbol) return b && isFinite(b.value) ? b.value : 0;
+  return 0;
+}
 const sessKey = (t) => Math.floor((t + 2 * 3600) / 86400); // phiên vàng mở 05:00 giờ VN
 const shift = (c) => ({ time: c.time + TZ, open: c.open, high: c.high, low: c.low, close: c.close });
 const dcol = (d) => (d >= 0 ? "rgba(38,179,132,.55)" : "rgba(229,83,75,.55)");
@@ -130,7 +136,7 @@ async function loadHistory() {
   const t0 = SMC.ltfStart(nowSec(), TF_SEC[S.tf], S.cfg?.smc?.ltf_bars ?? 1000, h4From());
   for (const f of feeds()) {
     try {
-      S.basis = f.symbol === feeds()[0].symbol ? basisNow() : 0; // chênh lệch chỉ đo cho nguồn chính
+      S.basis = basisNow(f.symbol);
       const { rows, h1 } = await loadTF(f, S.tf, t0 - 3 * 86400); // lùi 3 ngày để có nến mồi kể cả qua cuối tuần
       if (rows.length < 30) continue;
       S.candles = fromSeed(rows, t0); S.h1 = h1; S.ltfT0 = t0;
@@ -862,22 +868,42 @@ async function renderPine() {
 // có giá trị ≥ ngưỡng CỐ ĐỊNH config signals.big_trade_usd (mặc định 50.000 USD), nạp lại từ đầu phiên (tối đa 8 giờ) → mọi máy cùng số liệu
 // → "CVD lệnh lớn" = mua chủ động lớn − bán chủ động lớn (oz), cộng dồn theo phiên. Chạy cả trên bản web (trình duyệt tự nối).
 // Lưu ý: đây là dòng lệnh trên Binance (XAUUSDT/PAXG), chỉ đại diện một phần dòng tiền COMEX/OTC.
-S.big = { thr: null, ids: new Set(), byT: {}, ws: null, n: 0, since: null };
+S.big = { thr: null, ids: new Set(), raw: [], byT: {}, ws: null, n: 0, since: null, t0: null, loaded: false };
 const BIG_MIN_USD = () => S.cfg?.signals?.big_trade_usd ?? 50000;
+const BIG_KEEP = 8 * 3600e3, BIG_LS = "bildol_big_v2";
 function bigThr(price) {
   // ngưỡng CỐ ĐỊNH theo giá trị USD (config signals.big_trade_usd) → mọi máy/bản web đếm cùng một tập lệnh
   return price ? BIG_MIN_USD() / price : null;
 }
+function bigBucket(x) {
+  const step = TF_SEC[S.tf] || 900, ts = Math.floor(x.T / 1000);
+  const t = AGG[S.tf] ? SMC.bucketOf(ts, AGG[S.tf]) : Math.floor(ts / step) * step;   // 4h/1d neo 18:00 New York như nến
+  const e = S.big.byT[t] || (S.big.byT[t] = { d: 0, n: 0, buy: 0, sell: 0, nb: 0, ns: 0 });
+  if (x.s) { e.d -= x.q; e.sell += x.q; e.ns++; } else { e.d += x.q; e.buy += x.q; e.nb++; }
+  e.n++;
+}
+function bigRebucket() {
+  // đổi khung → chia lại từ danh sách lệnh lớn đã có (KHÔNG tải lại từ Binance)
+  const B = S.big; B.byT = {};
+  for (const x of B.raw) bigBucket(x);
+  const step = TF_SEC[S.tf] || 900;
+  B.since = B.t0 == null ? null : (AGG[S.tf] ? SMC.bucketOf(Math.ceil(B.t0 / 1000), AGG[S.tf]) + AGG[S.tf] : Math.ceil(B.t0 / 1000 / step) * step);
+  for (const t of Object.keys(B.byT)) if (B.since != null && +t < B.since) delete B.byT[t];   // bỏ nến có dữ liệu dở
+}
 function bigAdd(tMs, price, qty, sellAggr, id) {
   const B = S.big;
-  if (id != null) { if (B.ids.has(id)) return false; B.ids.add(id); if (B.ids.size > 200000) B.ids.clear(); }   // bỏ trùng giữa nạp lại (REST) và luồng trực tiếp (WS)
-  B.thr = bigThr(price);
+  if (id != null) { if (B.ids.has(id)) return false; B.ids.add(id); if (B.ids.size > 300000) B.ids.clear(); }   // bỏ trùng giữa nạp lại (REST) và luồng trực tiếp (WS)
+  B.thr = bigThr(price); B.lastId = Math.max(B.lastId || 0, id || 0); B.lastT = Math.max(B.lastT || 0, tMs);
   if (qty * price < BIG_MIN_USD()) return false;
-  const step = TF_SEC[S.tf] || 900, ts = Math.floor(tMs / 1000);
-  const t = AGG[S.tf] ? SMC.bucketOf(ts, AGG[S.tf]) : Math.floor(ts / step) * step;   // 4h/1d neo 18:00 New York như nến
-  const e = B.byT[t] || (B.byT[t] = { d: 0, n: 0, buy: 0, sell: 0, nb: 0, ns: 0 });
-  const q = sellAggr ? -qty : qty; e.d += q; e.n++; if (q > 0) { e.buy += qty; e.nb++; } else { e.sell += qty; e.ns++; }
-  B.n++; return true;
+  const x = { T: tMs, q: qty, s: !!sellAggr, a: id };
+  B.raw.push(x); bigBucket(x); B.n++; return true;
+}
+function bigSave() {
+  try {
+    const B = S.big, cut = Date.now() - BIG_KEEP;
+    B.raw = B.raw.filter((x) => x.T >= cut); if (B.t0 < cut) B.t0 = cut;
+    localStorage.setItem(BIG_LS, JSON.stringify({ sym: S.feed?.symbol, usd: BIG_MIN_USD(), t0: B.t0, lastId: B.lastId, lastT: B.lastT, raw: B.raw }));
+  } catch { }
 }
 function bigSeries() {
   // CVD lệnh lớn theo phiên, gắn vào nến hiện có
@@ -910,33 +936,41 @@ function renderBig() {
   el.innerHTML = thr == null ? "đang thu thập…" : `≥ ${thr.toFixed(thr < 10 ? 1 : 0)} oz · ${nb} nến: ${f ? `<b class="up">MUA ${fx(f.b)} oz</b> (${f.nb}) · <b class="down">BÁN ${fx(f.s)} oz</b> (${f.ns}) · ròng <b class="${f.d >= 0 ? "up" : "down"}">${f.d >= 0 ? "+" : "−"}${fx(Math.abs(f.d))}</b>` : "chưa đủ dữ liệu"}`;
 }
 async function bigBackfill(f) {
-  // Nạp lại NGƯỢC từ hiện tại về đầu phiên (05:00 giờ VN), tối đa 6 giờ: các nến gần nhất (dùng cho "5 nến") luôn đủ,
-  // phần xa nhất có thể bị cắt nếu phiên quá nhiều giao dịch (giới hạn số trang) → S.big.since = mốc nến đã đủ dữ liệu.
-  const now = Math.floor(Date.now() / 1000), sess0 = sessKey(now) * 86400 - 2 * 3600;
-  const step = TF_SEC[S.tf] || 900, win = step * ((S.cfg?.signals?.cvd_slope_bars ?? 5) + 1);
-  const start = Math.floor(Math.max(Math.min(sess0, now - win), now - 6 * 3600) / step) * step;
-  const path = /fapi/.test(f.kpath) ? "/fapi/v1/aggTrades" : "/api/v3/aggTrades";
-  const get = async (q) => { const a = await (await fetch(`${f.rest}${path}?symbol=${f.symbol}${q}`)).json(); return Array.isArray(a) ? a : []; };
+  // Tải NHẸ để không bị Binance chặn IP: tối đa 40 trang (1.000 giao dịch/trang), tuần tự, nghỉ 250 ms giữa các trang.
+  // Có bộ nhớ trình duyệt: mở lại trang chỉ tải phần giao dịch MỚI kể từ lần trước.
+  // Không có bộ nhớ: tải ngược từ hiện tại ~2 giờ (đủ cho "5 nến" khung ≤ 15m).
+  const B = S.big, now = Date.now(), path = /fapi/.test(f.kpath) ? "/fapi/v1/aggTrades" : "/api/v3/aggTrades";
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const get = async (q) => {
+    const r = await fetch(`${f.rest}${path}?symbol=${f.symbol}${q}`);
+    if (r.status === 418 || r.status === 429) { B.banned = Date.now(); throw new Error("rate"); }
+    const a = await r.json(); return Array.isArray(a) ? a : [];
+  };
+  let c = null; try { c = JSON.parse(localStorage.getItem(BIG_LS) || "null"); } catch { }
   try {
-    const last = await get("&limit=1"); if (!last.length) throw new Error("no trades");
-    const L = last[0].a; let minT = Infinity, minId = L + 1;
-    const MAXP = 300, PAR = 6;                         // tối đa 300.000 giao dịch, 6 yêu cầu song song
-    for (let k = 0; k < MAXP && minT > start * 1000 && minId > 0; k += PAR) {
-      const ids = []; for (let m = 0; m < PAR && k + m < MAXP; m++) { const fid = L + 1 - 1000 * (k + m + 1); if (fid + 1000 > 0) ids.push(Math.max(0, fid)); }
-      const pages = await Promise.all(ids.map((fid) => get(`&fromId=${fid}&limit=1000`)));
-      for (const a of pages) for (const x of a) {
-        if (x.T < start * 1000) continue;
-        bigAdd(x.T, +x.p, +x.q, !!x.m, x.a);
-        if (x.T < minT) minT = x.T; if (x.a < minId) minId = x.a;
+    if (c && c.sym === f.symbol && c.usd === BIG_MIN_USD() && c.lastT > now - 30 * 60e3 && Array.isArray(c.raw)) {
+      for (const x of c.raw) { B.ids.add(x.a); B.raw.push(x); }
+      B.t0 = c.t0; B.lastId = c.lastId; B.lastT = c.lastT; bigRebucket(); renderBig();
+      let from = c.lastId + 1;
+      for (let p = 0; p < 40; p++) {                       // tải tiếp phần mới
+        const a = await get(`&fromId=${from}&limit=1000`); if (!a.length) break;
+        for (const x of a) bigAdd(x.T, +x.p, +x.q, !!x.m, x.a);
+        from = a[a.length - 1].a + 1; if (a.length < 1000) break; await sleep(250);
       }
-      if (pages.some((a) => a.length && a[0].T < start * 1000)) { minT = start * 1000; break; }
-      S.big.since = Math.ceil(minT / 1000 / step) * step; renderBig();
+    } else {
+      const last = await get("&limit=1"); if (!last.length) throw new Error("no trades");
+      const L = last[0].a, want = now - 2 * 3600e3; let minT = now;
+      for (let p = 1; p <= 40 && minT > want; p++) {       // tải ngược
+        const fid = L + 1 - 1000 * p; if (fid + 1000 <= 0) break;
+        const a = await get(`&fromId=${Math.max(0, fid)}&limit=1000`); if (!a.length) break;
+        for (const x of a) { bigAdd(x.T, +x.p, +x.q, !!x.m, x.a); if (x.T < minT) minT = x.T; }
+        if (p % 5 === 0) { B.t0 = minT; bigRebucket(); renderBig(); }
+        await sleep(250);
+      }
+      B.t0 = Math.max(minT, want);
     }
-    S.big.since = minT <= start * 1000 ? start : Math.ceil(minT / 1000 / step) * step;
-    // bỏ phần nến bị cắt dở (trước mốc since) để không cộng thiếu
-    for (const t of Object.keys(S.big.byT)) if (+t < S.big.since) delete S.big.byT[t];
-  } catch { S.big.since = Math.ceil(now / step) * step; }
-  renderBig();
+  } catch { if (B.t0 == null) B.t0 = now; }
+  B.loaded = true; bigRebucket(); renderBig(); bigSave();
 }
 function connectBig(i = 0) {
   const f = S.feed || feeds()[0];
@@ -954,11 +988,13 @@ function connectBig(i = 0) {
   ws.onerror = () => ws.close();
 }
 function startBig() {
-  S.big = { thr: null, ids: new Set(), byT: {}, ws: S.big?.ws || null, n: 0, since: null };
   if (S.state?.demo) return;
   const f = S.feed || feeds()[0];
+  if (S.big.loaded && S.big.sym === f.symbol) { bigRebucket(); renderBig(); return; }
+  S.big = { thr: null, ids: new Set(), raw: [], byT: {}, ws: S.big?.ws || null, n: 0, since: null, t0: null, loaded: false, sym: f.symbol };
   bigBackfill(f); connectBig(0);
 }
+setInterval(() => { if (S.big?.loaded) bigSave(); }, 60e3);
 
 // ─────────────────────────── Bản web tĩnh (GitHub Pages / điện thoại) ───────────────────────────
 // γ live: tính lại Gamma Black-76/BSM từng strike theo giá hiện tại từ "gói" (giống Pine v32, analytics.pack_gamma)
@@ -1321,7 +1357,7 @@ async function pollState(first = false) {
     S.state = st; S.cfg = st.config;
     if (first) return;
     // chênh lệch đổi > 0.6 USD so với lúc vẽ -> tải lại nến cho khớp giá broker
-    if (S.feed && S.feed.symbol === feeds()[0].symbol && Math.abs(basisNow() - (S.basis || 0)) > 1.0) { startFeed(); return; }
+    if (S.feed && Math.abs(basisNow(S.feed.symbol) - (S.basis || 0)) > 1.0) { startFeed(); return; }
     if (STATIC) staticRecompute(true);
     if (changed) { runSMC(); replaySignals(); renderPine(); S.profScrolled = false; }
     renderAll();
