@@ -901,7 +901,9 @@ function initTouchTips() {
 function initStatic() {
   document.body.classList.add("static");
   for (const id of ["#btnRefresh", "#mt5Box"]) { const el = $(id); if (el) el.hidden = true; }
-  $("#btnAI").textContent = "Nhận định AI gần nhất";
+  $("#btnAI").textContent = "Xem nhận định AI";
+  const n = document.createElement("p"); n.className = "muted small"; n.textContent = "Bản web: dữ liệu Options và nhận định AI do máy tính tự cập nhật (Options mỗi 10 phút khi dashboard mở, AI mỗi 60 phút, lịch 13:30). Giá chạy live.";
+  $(".llm")?.appendChild(n);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => { });
 }
 
@@ -1102,7 +1104,7 @@ function drawHedgeCurve(h, p) {
   ctx.textAlign = "left"; ctx.fillText(`${fmt(xs[0], 0)}`, 2, Hh - 12); ctx.textAlign = "right"; ctx.fillText(`${fmt(xs[xs.length - 1], 0)}`, W - 2, Hh - 12);
   ctx.textAlign = "left"; ctx.fillText(`HĐ/${h.win}$  ↑ −Γ gia tốc · ↓ +Γ hãm · vạch ±${h.big}`, 2, 2);
 }
-function renderAll() { renderQuote(); renderProfile(); renderKpis(); renderMacro(); renderAgent(); renderHedge(); renderJournal(); renderWarn(); renderEngineChip(); renderBuild(); renderPaper(); drawOverlay(); }
+function renderAll() { renderQuote(); renderProfile(); renderKpis(); renderMacro(); renderAgent(); renderHedge(); renderJournal(); renderWarn(); renderEngineChip(); renderBuild(); renderPaper(); showAiLast(); drawOverlay(); }
 
 // ─────────────────────────── tài khoản Paper ───────────────────────────
 function paperLoad() {
@@ -1178,11 +1180,19 @@ async function pollState(first = false) {
     renderAll();
   } catch { S.state = null; renderEngineChip(); }
 }
+// Nhận định AI mới nhất do máy tính tự chạy (mỗi 60 phút + sau job 13:30) → tự hiện trên board và bản web
+function showAiLast(force = false) {
+  const a = S.state?.ai_last, out = $("#aiOut");
+  if (!a?.text || (!force && S.aiShown === a.time)) return;
+  if (!force && S.aiManual && new Date(S.aiManual) > new Date(a.time)) return;   // đang xem bản vừa bấm tay, mới hơn
+  S.aiShown = a.time;
+  out.innerHTML = esc(a.text).split(/\n{2,}/).map((p) => `<p>${p.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>")}</p>`).join("");
+  $("#aiMeta").textContent = `${a.auto ? "Tự chạy" : "Bấm tay"} · ${new Date(a.time).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}`;
+}
 async function askAI() {
   if (STATIC) {
-    const a = S.state?.ai_last, out = $("#aiOut");
-    out.innerHTML = a?.text ? esc(a.text).split(/\n{2,}/).map((p) => `<p>${p.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>")}</p>`).join("") : `<p class="muted">Chưa có nhận định AI nào từ máy tính (bấm “AI phân tích” trên board máy tính).</p>`;
-    if (a?.time) $("#aiMeta").textContent = `${a.model || "Claude"} · ${new Date(a.time).toLocaleString("vi-VN")}`;
+    if (S.state?.ai_last?.text) showAiLast(true);
+    else $("#aiOut").innerHTML = `<p class="muted">Chưa có nhận định AI nào. Máy tính tự chạy AI mỗi 60 phút khi MO_DASHBOARD đang mở và sau lịch 13:30.</p>`;
     return;
   }
   const btn = $("#btnAI"), out = $("#aiOut"), c = S.candles, last = c[c.length - 1], sc = S.cfg.signals;
@@ -1200,6 +1210,7 @@ async function askAI() {
     if (!res.ok) { out.innerHTML = `<p class="loss">${esc(res.error)}</p><p class="muted small">Nhập key: nhấp đúp DAT_API_KEY.bat trong thư mục bildol-gold-terminal.</p>`; return; }
     out.innerHTML = esc(res.text).split(/\n{2,}/).map((p) => `<p>${p.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>")}</p>`).join("");
     $("#aiMeta").textContent = `${res.model || "Claude"} · ${new Date().toLocaleTimeString("vi-VN")}`;
+    S.aiManual = new Date().toISOString();
   } catch (e) { out.innerHTML = `<p class="loss">Không gọi được backend: ${esc(e.message)}</p>`; }
   finally { btn.disabled = false; }
 }
