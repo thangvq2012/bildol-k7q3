@@ -59,7 +59,7 @@ function baseOpts() {
     crosshair: { mode: 0 },
   };
 }
-let chart, candleS, cvdChart, cvdLine, deltaHist, bigLine;
+let chart, candleS, cvdChart, cvdLine, deltaHist, bigLine, bigBuyLine, bigSellLine;
 function initCharts() {
   chart = LC.createChart($("#chart"), baseOpts());
   candleS = chart.addCandlestickSeries({ upColor: C.up, downColor: C.down, borderVisible: false, wickUpColor: C.up, wickDownColor: C.down, priceFormat: { type: "price", precision: 2, minMove: 0.01 } });
@@ -68,7 +68,9 @@ function initCharts() {
   cvdChart.priceScale("delta").applyOptions({ scaleMargins: { top: 0.55, bottom: 0 } });
   cvdLine = cvdChart.addLineSeries({ color: C.gc, lineWidth: 2, priceFormat: { type: "volume" } });
   // CVD lệnh lớn (oz) – thang riêng bên trái
-  bigLine = cvdChart.addLineSeries({ color: C.gld, lineWidth: 2, priceScaleId: "big", priceFormat: { type: "volume" }, title: "Lệnh lớn" });
+  bigLine = cvdChart.addLineSeries({ color: C.gld, lineWidth: 2, priceScaleId: "big", priceFormat: { type: "volume" }, title: "Ròng lớn" });
+  bigBuyLine = cvdChart.addLineSeries({ color: C.up, lineWidth: 1, lineStyle: 2, priceScaleId: "big", priceFormat: { type: "volume" }, title: "Mua lớn" });
+  bigSellLine = cvdChart.addLineSeries({ color: C.down, lineWidth: 1, lineStyle: 2, priceScaleId: "big", priceFormat: { type: "volume" }, title: "Bán lớn" });
   cvdChart.priceScale("big").applyOptions({ visible: true, scaleMargins: { top: 0.08, bottom: 0.5 } });
   cvdChart.applyOptions({ leftPriceScale: { visible: false } });
   let syncing = false;
@@ -722,7 +724,7 @@ function renderAgent() {
   const L = a.L, dealer = a.neg ? "LP bán khi giá giảm → gia tốc" : "LP mua dip / bán rip → giữ biên";
   $("#decision").innerHTML = `<div class="act ${a.act.toLowerCase()}">${a.act}</div>
     <dl><dt>Regime</dt><dd>${a.regime}</dd><dt>Dealer</dt><dd>${dealer}</dd>
-    <dt>Lệnh lớn</dt><dd>${(() => { const f = bigFlow(S.cfg?.signals?.cvd_slope_bars ?? 5); return f ? `${f.d >= 0 ? "MUA" : "BÁN"} ròng ${Math.abs(f.d).toFixed(0)} oz (${f.n} lệnh ≥ ${S.big.thr?.toFixed(0)} oz)` : "đang thu thập"; })()}</dd>
+    <dt>Lệnh lớn</dt><dd>${(() => { const f = bigFlow(S.cfg?.signals?.cvd_slope_bars ?? 5); return f ? `MUA ${f.b.toFixed(0)} · BÁN ${f.s.toFixed(0)} oz → ròng ${f.d >= 0 ? "+" : "−"}${Math.abs(f.d).toFixed(0)} (${f.nb}/${f.ns} lệnh ≥ ${S.big.thr?.toFixed(0)} oz)` : "đang thu thập"; })()}</dd>
     <dt>Hedge LP</dt><dd>${(() => { const v = hedgePer(a.p), z = hZoneAt(a.p); return v == null ? "—" : `≈ ${Math.abs(Math.round(v)).toLocaleString("en-US")} HĐ/${hedgeSt().win}$ (${hTier(v)}, ${v > 0 ? "−Γ gia tốc" : "+Γ hãm"})${z ? " · trong vùng hedge lớn" : ""}`; })()}</dd>
     <dt>Target</dt><dd>${fmt(a.target)} <span class="muted">(${esc(a.why)})</span></dd><dt>Conviction</dt><dd>${sgn(a.conv, 2)}</dd>
     ${S.smc ? `<dt>Cấu trúc</dt><dd>${esc(S.smc.struct)}</dd>` : ""}</dl>`;
@@ -875,33 +877,39 @@ function bigAdd(tMs, price, qty, sellAggr) {
   if (B.thr == null || qty < B.thr) return false;
   const step = TF_SEC[S.tf] || 900, ts = Math.floor(tMs / 1000);
   const t = AGG[S.tf] ? SMC.bucketOf(ts, AGG[S.tf]) : Math.floor(ts / step) * step;   // 4h/1d neo 18:00 New York như nến
-  const e = B.byT[t] || (B.byT[t] = { d: 0, n: 0, buy: 0, sell: 0 });
-  const q = sellAggr ? -qty : qty; e.d += q; e.n++; if (q > 0) e.buy += qty; else e.sell += qty;
+  const e = B.byT[t] || (B.byT[t] = { d: 0, n: 0, buy: 0, sell: 0, nb: 0, ns: 0 });
+  const q = sellAggr ? -qty : qty; e.d += q; e.n++; if (q > 0) { e.buy += qty; e.nb++; } else { e.sell += qty; e.ns++; }
   B.n++; return true;
 }
 function bigSeries() {
   // CVD lệnh lớn theo phiên, gắn vào nến hiện có
-  const c = S.candles, out = []; let cum = 0, key = null;
+  // trả về 3 đường theo phiên: ròng, tổng MUA lớn (dương), tổng BÁN lớn (vẽ âm)
+  const c = S.candles, out = [], ob = [], os = []; let cum = 0, cb = 0, cs = 0, key = null;
   for (const k of c) {
-    if (sessKey(k.time) !== key) { key = sessKey(k.time); cum = 0; }
-    const e = S.big.byT[k.time]; if (e) cum += e.d;
-    k.bigd = e ? e.d : 0; k.bign = e ? e.n : 0; k.bigcvd = cum;
-    if (S.big.since != null && k.time + (TF_SEC[S.tf] || 900) > S.big.since) out.push({ time: k.time + TZ, value: cum });
+    if (sessKey(k.time) !== key) { key = sessKey(k.time); cum = 0; cb = 0; cs = 0; }
+    const e = S.big.byT[k.time]; if (e) { cum += e.d; cb += e.buy; cs += e.sell; }
+    k.bigd = e ? e.d : 0; k.bign = e ? e.n : 0; k.bigb = e ? e.buy : 0; k.bigs = e ? e.sell : 0;
+    k.bignb = e ? e.nb || 0 : 0; k.bigns = e ? e.ns || 0 : 0; k.bigcvd = cum; k.bigcb = cb; k.bigcs = cs;
+    if (S.big.since != null && k.time + (TF_SEC[S.tf] || 900) > S.big.since) {
+      out.push({ time: k.time + TZ, value: cum }); ob.push({ time: k.time + TZ, value: cb }); os.push({ time: k.time + TZ, value: -cs });
+    }
   }
-  return out;
+  return { net: out, buy: ob, sell: os };
 }
 function bigFlow(n = 5) { // lệnh lớn ròng (oz) trong n nến gần nhất, chỉ tính khi đã có dữ liệu cho cả n nến
   const c = S.candles; if (S.big.since == null || c.length < n) return null;
   if (c[c.length - n].time < S.big.since - (TF_SEC[S.tf] || 900)) return null;
-  let d = 0, m = 0; for (const k of c.slice(-n)) { d += k.bigd || 0; m += k.bign || 0; }
-  return { d, n: m };
+  let d = 0, m = 0, b = 0, s = 0, nb = 0, ns = 0;
+  for (const k of c.slice(-n)) { d += k.bigd || 0; m += k.bign || 0; b += k.bigb || 0; s += k.bigs || 0; nb += k.bignb || 0; ns += k.bigns || 0; }
+  return { d, n: m, b, s, nb, ns };
 }
 function renderBig() {
   if (!bigLine) return;
-  bigLine.setData(bigSeries());
+  const sr = bigSeries(); bigLine.setData(sr.net); bigBuyLine?.setData(sr.buy); bigSellLine?.setData(sr.sell);
   const el = $("#bigVal"); if (!el) return;
   const f = bigFlow(S.cfg?.signals?.cvd_slope_bars ?? 5), thr = S.big.thr;
-  el.innerHTML = thr == null ? "đang thu thập…" : `≥ ${thr.toFixed(thr < 10 ? 1 : 0)} oz · ${f ? `${f.d >= 0 ? "MUA" : "BÁN"} ròng <b class="${f.d >= 0 ? "up" : "down"}">${Math.abs(f.d).toFixed(0)} oz</b> (${f.n} lệnh, ${S.cfg?.signals?.cvd_slope_bars ?? 5} nến)` : "chưa đủ dữ liệu"}`;
+  const nb = S.cfg?.signals?.cvd_slope_bars ?? 5, fx = (v) => Math.round(v).toLocaleString("en-US");
+  el.innerHTML = thr == null ? "đang thu thập…" : `≥ ${thr.toFixed(thr < 10 ? 1 : 0)} oz · ${nb} nến: ${f ? `<b class="up">MUA ${fx(f.b)} oz</b> (${f.nb}) · <b class="down">BÁN ${fx(f.s)} oz</b> (${f.ns}) · ròng <b class="${f.d >= 0 ? "up" : "down"}">${f.d >= 0 ? "+" : "−"}${fx(Math.abs(f.d))}</b>` : "chưa đủ dữ liệu"}`;
 }
 async function bigBackfill(f) {
   // nạp lại giao dịch ~60 phút gần nhất (REST aggTrades), để có ngay CVD lệnh lớn khi vừa mở board
@@ -1327,7 +1335,7 @@ async function askAI() {
   const vavg = c.slice(-sc.vol_sma - 1, -1).reduce((a, x) => a + x.vol, 0) / sc.vol_sma, d = divAt(c.length - 1), ag = agentState();
   const body = {
     price: lastPrice(),
-    flow: { lenh_lon: (() => { const f = bigFlow(sc.cvd_slope_bars); return f ? { nguong_oz: S.big.thr, rong_oz_5_nen: f.d, so_lenh: f.n, cvd_lenh_lon_phien: last?.bigcvd, ghi_chu: "giao dịch khớp ≥ ngưỡng trên Binance (đại diện một phần)" } : null; })(), cvd_phien: last?.cvd, cvd_doc_5_nen: c.length > 6 ? last.cvd - c[c.length - 6].cvd : null, volume_so_voi_tb: vavg ? last.vol / vavg : null, phan_ky: d.bear ? "âm" : d.bull ? "dương" : "không", khung: S.tf, wall_chinh: S.primary, agent: ag ? { act: ag.act, regime: ag.regime, target: ag.target, conviction: ag.conv } : null,
+    flow: { lenh_lon: (() => { const f = bigFlow(sc.cvd_slope_bars); return f ? { nguong_oz: S.big.thr, rong_oz_5_nen: f.d, mua_lon_oz_5_nen: f.b, ban_lon_oz_5_nen: f.s, so_lenh_mua: f.nb, so_lenh_ban: f.ns, so_lenh: f.n, cvd_lenh_lon_phien: last?.bigcvd, ghi_chu: "giao dịch khớp ≥ ngưỡng trên Binance (đại diện một phần)" } : null; })(), cvd_phien: last?.cvd, cvd_doc_5_nen: c.length > 6 ? last.cvd - c[c.length - 6].cvd : null, volume_so_voi_tb: vavg ? last.vol / vavg : null, phan_ky: d.bear ? "âm" : d.bull ? "dương" : "không", khung: S.tf, wall_chinh: S.primary, agent: ag ? { act: ag.act, regime: ag.regime, target: ag.target, conviction: ag.conv } : null,
       smc: S.smc ? { cau_truc: S.smc.struct, ke_hoach: S.smc.plan, lenh: smcOrders().slice(-4).map((o) => ({ gio_vn: vnClock(S.candles[o.created]?.time ?? 0), loai: o.txt, huong: o.side, trang_thai: o.status, entry: o.entry, sl: o.sl, tp1: o.tp1, tp2: o.tp2, tp3: o.tp3 })) } : null },
     signals: S.signals.slice(-3).map((s) => ({ gio_vn: vnClock(s.time), loai: s.type, huong: s.side, diem: `${s.score}/${s.max}`, entry: s.entry, sl: s.sl, tp1: s.tp1, tp2: s.tp2 })),
     candles: c.slice(-30).map((x) => [vnClock(x.time), +x.open.toFixed(2), +x.high.toFixed(2), +x.low.toFixed(2), +x.close.toFixed(2), Math.round(x.vol), Math.round(x.delta)]),
