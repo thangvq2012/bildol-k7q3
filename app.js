@@ -1209,7 +1209,7 @@ async function askAI() {
     const res = await (await fetch("/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).json();
     if (!res.ok) { out.innerHTML = `<p class="loss">${esc(res.error)}</p><p class="muted small">Nhập key: nhấp đúp DAT_API_KEY.bat trong thư mục bildol-gold-terminal.</p>`; return; }
     out.innerHTML = esc(res.text).split(/\n{2,}/).map((p) => `<p>${p.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>")}</p>`).join("");
-    $("#aiMeta").textContent = `${res.model || "Claude"} · ${new Date().toLocaleTimeString("vi-VN")}`;
+    $("#aiMeta").textContent = `${res.model || "Claude"} · ${new Date().toLocaleTimeString("vi-VN")}${res.web ? " · đã gửi lên web (≈1–3 phút sau mở link sẽ thấy)" : ""}`;
     S.aiManual = new Date().toISOString();
   } catch (e) { out.innerHTML = `<p class="loss">Không gọi được backend: ${esc(e.message)}</p>`; }
   finally { btn.disabled = false; }
