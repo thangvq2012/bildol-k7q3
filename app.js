@@ -902,7 +902,7 @@ function initStatic() {
   document.body.classList.add("static");
   for (const id of ["#btnRefresh", "#mt5Box"]) { const el = $(id); if (el) el.hidden = true; }
   $("#btnAI").textContent = "Xem nhận định AI";
-  const n = document.createElement("p"); n.className = "muted small"; n.textContent = "Bản web: dữ liệu Options và nhận định AI do máy tính tự cập nhật (Options mỗi 10 phút khi dashboard mở, AI mỗi 60 phút, lịch 13:30). Giá chạy live.";
+  const n = document.createElement("p"); n.className = "muted small"; n.textContent = "Bản web: dữ liệu Options và nhận định AI do máy tính cập nhật (lịch 13:30 mỗi ngày; AI thêm khi bấm \"AI phân tích\" trên board máy tính). Giá chạy live.";
   $(".llm")?.appendChild(n);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => { });
 }
@@ -1192,7 +1192,7 @@ function showAiLast(force = false) {
 async function askAI() {
   if (STATIC) {
     if (S.state?.ai_last?.text) showAiLast(true);
-    else $("#aiOut").innerHTML = `<p class="muted">Chưa có nhận định AI nào. Máy tính tự chạy AI mỗi 60 phút khi MO_DASHBOARD đang mở và sau lịch 13:30.</p>`;
+    else $("#aiOut").innerHTML = `<p class="muted">Chưa có nhận định AI nào. Máy tính chạy AI lúc 13:30 mỗi ngày và mỗi lần bấm "AI phân tích" trên board máy tính.</p>`;
     return;
   }
   const btn = $("#btnAI"), out = $("#aiOut"), c = S.candles, last = c[c.length - 1], sc = S.cfg.signals;
