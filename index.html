@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Bildol Gold Terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0b0e12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bildol">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<script>window.BILDOL_STATIC = true;</script>
+</head>
+<body>
+<header class="bar1">
+  <div class="brand"><b>BILDOL</b><span id="livePill" class="live">LIVE</span></div>
+  <div class="inst"><span class="on">XAU <small id="sym">XAUUSDT</small></span></div>
+  <div class="meta"><span id="buildInfo" class="build">—</span><span id="metaRef">GC — · GLD —</span></div>
+  <div class="px"><b id="px">—</b><span id="pxchg" class="chg">—</span></div>
+  <div class="bars"><b id="nbars">—</b><small>nến</small></div>
+  <div class="toggles">
+    <label class="tg key"><input type="checkbox" id="lyKey" checked><span>GC Levels</span></label>
+    <label class="tg gld"><input type="checkbox" id="lyGLD" checked><span>GLD Levels</span></label>
+    <label class="tg gex"><input type="checkbox" id="lyGex" checked><span>GEX</span></label>
+    <label class="tg vp"><input type="checkbox" id="lyVP" checked><span>POC / VA</span></label>
+    <label class="tg smc"><input type="checkbox" id="lySMC" checked><span>SMC</span></label>
+    <label class="tg mk"><input type="checkbox" id="lyMk" checked><span>Markers</span></label>
+  </div>
+  <label class="sel">Wall chính <select id="primarySrc"><option value="GC">GC</option><option value="GLD">GLD</option></select></label>
+  <div class="actions">
+    <button id="btnCopyTV" class="ghost" title="Copy đoạn 'BILDOL v2' để dán vào ô Dữ liệu engine của indicator BILDOL (dự phòng khi lịch tự dán lỗi)">Copy cho TradingView</button>
+    <button id="btnRefresh" class="ghost">Làm mới Options</button>
+    <button id="btnAI" class="primary">AI phân tích</button>
+  </div>
+</header>
+<div id="warn" class="warn" hidden></div>
+<div class="bar2">
+  <div class="tfs" id="tfs">
+    <button data-tf="1m">1m</button><button data-tf="3m">3m</button><button data-tf="5m">5m</button><button data-tf="15m" class="on">15m</button><button data-tf="30m">30m</button><button data-tf="1h">1h</button><button data-tf="4h">4h</button><button data-tf="1d">1d</button>
+  </div>
+  <div class="chips">
+    <span class="chip" id="chipWs"><i></i>Feed giá</span>
+    <span class="chip" id="chipEngine"><i></i>Engine</span>
+    <span class="chip" id="chipSess"><i></i>Phiên Mỹ</span>
+  </div>
+</div>
+
+<main class="grid">
+  <section class="chartcol">
+    <div class="chartwrap" id="chartWrap">
+      <div id="chart" class="chart"></div>
+      <canvas id="ov" class="ov"></canvas>
+      <div class="chartinfo" id="chartInfo">—</div>
+      <div class="sigcount" id="sigCount">0 tín hiệu</div>
+    </div>
+    <div class="cvdhead"><span>CVD phiên</span><b id="cvdVal">—</b><span id="cvdDiv" class="tag">—</span><span class="muted small">Cột = delta mỗi nến (mua chủ động − bán chủ động)</span></div>
+    <div id="cvd" class="cvd"></div>
+  </section>
+
+  <aside class="right">
+    <section class="panel sp">
+      <header><h2>Strike Profile</h2>
+        <div class="tabs" id="profTabs"><button data-src="GC" class="on">GC</button><button data-src="GLD">GLD</button></div>
+        <label class="sel" title="Kỳ hạn quyền chọn dùng cho Strike Profile và các mốc vẽ trên chart (tín hiệu và Agent luôn dùng Mọi kỳ hạn)">Kỳ hạn <select id="tenorSel" title="Kỳ hạn quyền chọn dùng cho Strike Profile và các mốc vẽ trên chart (tín hiệu và Agent luôn dùng Mọi kỳ hạn)"><option value="all">Mọi kỳ hạn</option><option value="short">0DTE + Tuần (≤ 7 ngày)</option><option value="month">&gt; 7 ngày (Tháng)</option></select></label>
+        <span class="muted small" id="profMeta">—</span>
+      </header>
+      <div class="tablewrap"><table class="prof" id="prof">
+        <thead>
+          <tr class="grp"><th colspan="2"></th><th colspan="2" class="c">CALL</th><th colspan="2" class="p">PUT</th><th colspan="2">EXPO</th><th></th><th></th><th colspan="8">GREEKS (call, kỳ gần nhất)</th></tr>
+          <tr><th>Giá XAU</th><th>Strike gốc</th><th>OI</th><th>Vol</th><th>OI</th><th>Vol</th><th>GEX</th><th>DEX</th><th>IV</th><th>ΔOI</th><th title="Số ngày tới đáo hạn của kỳ dùng để tính Greeks">DTE</th><th title="Delta call">Δ</th><th title="Gamma: delta đổi bao nhiêu khi giá đổi 1 USD">Γ</th><th title="USD giá option đổi khi IV tăng 1 điểm">Vega</th><th title="Delta đổi khi IV tăng 1 điểm">Vanna</th><th title="Theta call: USD giá option mất đi sau 1 ngày">Θ/ngày</th><th title="Rho call: USD giá option đổi khi lãi suất tăng 1%">ρ</th><th title="Charm call: delta đổi sau 1 ngày (giá, IV đứng yên)">Charm</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table></div>
+    </section>
+
+    <div class="duo">
+      <section class="panel llm">
+        <header><h2>LLM Phân Tích Prediction</h2><span id="aiMeta" class="muted small">Claude</span></header>
+        <div class="kpis" id="kpis"></div>
+        <div id="aiOut" class="aiout"><p class="muted">Bấm “AI phân tích”: Claude đọc giá, mốc Options, CVD, DXY, lịch tin và trả về NHẬN ĐỊNH + 3 KỊCH BẢN có xác suất. Lần đầu: nhập key bằng DAT_API_KEY.bat.</p></div>
+      </section>
+      <section class="panel agent">
+        <header><h2>Bildol Agent</h2><span class="muted small" id="agentAge">—</span></header>
+        <div class="decision" id="decision"></div>
+        <div class="fusion" id="fusion"></div>
+        <div class="outlook" id="outlook"></div>
+        <div class="macro" id="macro"></div>
+        <ul class="news" id="news"></ul>
+      </section>
+    </div>
+
+    <div class="duo">
+      <section class="panel hedgep">
+        <header><h2 title="Bước 5: mô phỏng LP / Market Maker cân bằng Delta (Delta Hedging Rebalance) khi giá chạy">Rebalance Hedge LP</h2><span class="muted small" id="hedgeMeta">—</span></header>
+        <div id="hedgeOut"><p class="muted">Đang chờ dữ liệu Options…</p></div>
+        <p class="muted small" title="N = −[Delta LP(giá mới) − Delta LP(giá hiện tại)] × OI, định giá lại toàn bộ Delta (Black-76 / Black-Scholes). LP giả định long call / short put của khách (cùng quy ước GEX). GLD quy ra HĐ GC 100 oz.">Số HĐ GC LP phải MUA/BÁN khi giá đi ±ΔP (gộp GC + GLD). Vùng đỏ: −Γ, LP hedge thuận chiều nên giá dễ gia tốc. Vùng xanh: +Γ, giá bị hãm. ≥ 1,000 HĐ/10 USD là cỡ LP.</p>
+      </section>
+      <section class="panel journal">
+        <header><h2>Nhật ký &amp; Thống kê</h2><div class="tabs" id="jTabs"><button data-t="live" class="on">Nhật ký live</button><button data-t="bt">Backtest SMC</button></div></header>
+        <div id="jOut"></div>
+      </section>
+    </div>
+
+    <div class="duo">
+      <section class="panel acct">
+        <header><h2>Account · Paper</h2><label class="auto"><input type="checkbox" id="autoTrade"> Tự vào lệnh theo tín hiệu</label></header>
+        <div class="acctnums" id="acctNums"></div>
+        <div class="order">
+          <label>Lot <input id="oLots" type="number" step="0.01" min="0.01" value="0.10"></label>
+          <label>SL <input id="oSL" type="number" step="0.01"></label>
+          <label>TP <input id="oTP" type="number" step="0.01"></label>
+          <button id="oBuy" class="buy">BUY</button><button id="oSell" class="sell">SELL</button>
+        </div>
+        <div class="order">
+          <button id="oSig" class="ghost small">Lấy theo tín hiệu</button><button id="oClose" class="ghost small">Đóng lệnh</button><button id="oReset" class="ghost small">Đặt lại tài khoản</button>
+        </div>
+        <div id="openPos" class="openpos"></div>
+        <details class="mt5" id="mt5Box"><summary>Tài khoản MT5 thật (chỉ đọc)</summary><div id="mt5Out" class="muted small">Mở mục này để đọc.</div></details>
+      </section>
+      <section class="panel hist">
+        <header><h2>Lịch sử giao dịch</h2><button id="hExport" class="ghost small">Xuất CSV</button></header>
+        <div class="hstats" id="hStats"></div>
+        <div class="tablewrap"><table class="htable" id="hTable"><thead><tr><th>Giờ</th><th>Lệnh</th><th>Entry</th><th>Exit</th><th>SL / TP</th><th>R</th><th>$</th></tr></thead><tbody></tbody></table></div>
+      </section>
+    </div>
+
+    <details class="panel pinebox"><summary><h2>Xuất sang TradingView (indicator BILDOL)</h2></summary><div id="pineOut" class="pine"></div></details>
+  </aside>
+</main>
+<footer class="foot">OI cập nhật 1 lần/ngày sau phiên · GEX/DEX dựa trên giả định vị thế LP · Tài khoản Paper là giả lập · Không phải lời khuyên đầu tư.</footer>
+
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="smc.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
