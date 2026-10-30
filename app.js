@@ -596,16 +596,34 @@ function evaluate(i, live) {
   }
   if (!s && k.high >= cw - tol && k.close < cw && k.close < k.open)
     s = mkSig("Bull Trap tại Call Wall", "SELL", { "Phân kỳ CVD âm": d0.bear || d1.bear, "CVD dốc xuống": slope < 0, "DXY tăng": dxyUp, "Volume spike": volSpike, "Vol↑ mà ΔOI≤0": volSpike && doiFlat }, k.high + sc.sl_buffer, nextStrike(k.close, false), pw);
-  // Bước 5: giá đóng nến đi VÀO vùng hedge lớn −Γ (LP hedge thuận chiều) → đi theo dòng hedge
-  if (!s && hedgeSt()) {
-    const z = hZoneAt(k.close);
-    if (z && z.kind === "accel") {
-      if (prev.close > z.hi && k.close < k.open) {
-        const tp1 = nextStrike(k.close, false);
-        s = mkSig(`HEDGE −Γ: LP bán đuổi (${Math.abs(z.peak)} HĐ/${hedgeSt().win}$)`, "SELL", { "CVD dốc xuống": slope < 0, "Delta nến âm": k.delta < 0, "DXY tăng": dxyUp, "Volume spike": volSpike }, z.hi + sc.sl_buffer, tp1, tp1 != null ? nextStrike(tp1, false) : null);
-      } else if (prev.close < z.lo && k.close > k.open) {
-        const tp1 = nextStrike(k.close, true);
-        s = mkSig(`HEDGE −Γ: LP mua đuổi (${Math.abs(z.peak)} HĐ/${hedgeSt().win}$)`, "BUY", { "CVD dốc lên": slope > 0, "Delta nến dương": k.delta > 0, "DXY giảm": dxyDn, "Volume spike": volSpike }, z.lo - sc.sl_buffer, tp1, tp1 != null ? nextStrike(tp1, true) : null);
+  // Bước 5 – vùng hedge lớn −Γ (LP hedge thuận chiều giá). Hai kiểu tín hiệu (30/10, người dùng đồng ý):
+  //  • HEDGE trap (ưu tiên): râu/nến chọc VÀO vùng rồi nến đóng NGƯỢC ra khỏi mép vùng → LP mua/bán lại, giá bật mạnh
+  //    (như 30/10 14:55: rơi vào vùng 3,960–3,977 rồi bật về Put Wall/Magnet 3,989). SL ngoài cực trị 3 nến gần nhất.
+  //  • HEDGE theo đà: phải có 2 NẾN ĐÓNG liên tiếp trong vùng (nến trước đã vào, nến này đóng tiếp theo chiều) → đi theo dòng hedge.
+  const hz = hedgeSt();
+  if (!s && hz && i >= 3) {
+    const zs = (hz.zones || []).filter((z) => z.kind === "accel");
+    const p2 = c[i - 2], sw = (S.smc?.sweeps || []).some((w) => w.i >= i - 2 && w.i <= i);
+    const lo3 = Math.min(k.low, prev.low, p2.low), hi3 = Math.max(k.high, prev.high, p2.high);
+    const zDn = zs.find((z) => lo3 <= z.hi && k.close > z.hi && (prev.low <= z.hi || k.low <= z.hi));   // chọc xuống vùng rồi rút lên
+    const zUp = zs.find((z) => hi3 >= z.lo && k.close < z.lo && (prev.high >= z.lo || k.high >= z.lo)); // chọc lên vùng rồi rút xuống
+    if (zDn && k.close > k.open) {
+      const tp1 = nextStrike(k.close, true);
+      s = mkSig(`HEDGE trap: rút chân khỏi vùng −Γ ${fmt(zDn.lo, 0)}–${fmt(zDn.hi, 0)}`, "BUY", { "CVD dốc lên": slope > 0, "Delta nến dương": k.delta > 0, "Nến quét thanh khoản": sw, "DXY giảm": dxyDn, "Volume spike": volSpike }, lo3 - sc.sl_buffer, tp1, tp1 != null ? nextStrike(tp1, true) : null);
+    } else if (zUp && k.close < k.open) {
+      const tp1 = nextStrike(k.close, false);
+      s = mkSig(`HEDGE trap: rút râu khỏi vùng −Γ ${fmt(zUp.lo, 0)}–${fmt(zUp.hi, 0)}`, "SELL", { "CVD dốc xuống": slope < 0, "Delta nến âm": k.delta < 0, "Nến quét thanh khoản": sw, "DXY tăng": dxyUp, "Volume spike": volSpike }, hi3 + sc.sl_buffer, tp1, tp1 != null ? nextStrike(tp1, false) : null);
+    }
+    if (!s) {
+      const z = hZoneAt(k.close), zp = z && prev.close >= z.lo && prev.close <= z.hi ? z : null;
+      if (zp && zp.kind === "accel") {
+        if (p2.close > zp.hi && k.close < prev.close && k.close < k.open) {
+          const tp1 = nextStrike(k.close, false);
+          s = mkSig(`HEDGE −Γ: LP bán đuổi, 2 nến trong vùng (${Math.abs(zp.peak)} HĐ/${hz.win}$)`, "SELL", { "CVD dốc xuống": slope < 0, "Delta nến âm": k.delta < 0, "DXY tăng": dxyUp, "Volume spike": volSpike }, Math.max(prev.high, zp.hi) + sc.sl_buffer, tp1, tp1 != null ? nextStrike(tp1, false) : null);
+        } else if (p2.close < zp.lo && k.close > prev.close && k.close > k.open) {
+          const tp1 = nextStrike(k.close, true);
+          s = mkSig(`HEDGE −Γ: LP mua đuổi, 2 nến trong vùng (${Math.abs(zp.peak)} HĐ/${hz.win}$)`, "BUY", { "CVD dốc lên": slope > 0, "Delta nến dương": k.delta > 0, "DXY giảm": dxyDn, "Volume spike": volSpike }, Math.min(prev.low, zp.lo) - sc.sl_buffer, tp1, tp1 != null ? nextStrike(tp1, true) : null);
+        }
       }
     }
   }
