@@ -753,7 +753,7 @@ function renderAgent() {
     trap = `<b>Bẫy:</b> canh râu quét qua Wall rồi đóng ngược vào trong kèm phân kỳ CVD.`;
   }
   const smcP = smcHtml();
-  const sig = a.last ? `<p><b>Tín hiệu cuối:</b> ${a.last.side} · ${esc(a.last.type)}${a.last.smc ? "" : ` (${a.last.score}/${a.last.max})`} lúc ${vnClock(a.last.time)} · Entry ${fmt(a.last.entry)} · SL ${fmt(a.last.sl)} · TP1 ${fmt(a.last.tp1)} · khối lượng ≈ ${fmt(planFor(a.last).lots, 2)} lot</p>` : "";
+  const sig = a.last ? `<p><b>Tín hiệu cuối:</b> ${a.last.side} · ${esc(a.last.type)}${a.last.smc ? "" : ` (${a.last.score}/${a.last.max})`} lúc ${vnDate(a.last.time) !== vnDate(nowSec()) ? `<b>${vnDate(a.last.time)}</b> ` : ""}${vnClock(a.last.time)}${a.last.status === "tp1" ? " (đã chạm TP1)" : a.last.status === "sl" ? " (đã dính SL)" : ""} · Entry ${fmt(a.last.entry)} · SL ${fmt(a.last.sl)} · TP1 ${fmt(a.last.tp1)} · khối lượng ≈ ${fmt(planFor(a.last).lots, 2)} lot</p>` : "";
   $("#outlook").innerHTML = `${smcP}<p>${main}</p><p>${alt}</p><p>${trap}</p>${sig}`;
   $("#agentAge").textContent = `cập nhật ${new Date().toLocaleTimeString("vi-VN")}`;
 }
