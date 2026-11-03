@@ -102,6 +102,10 @@
         <div id="hedgeOut"><p class="muted">Đang chờ dữ liệu Options…</p></div>
         <p class="muted small" title="N = −[Delta LP(giá mới) − Delta LP(giá hiện tại)] × OI, định giá lại toàn bộ Delta (Black-76 / Black-Scholes). LP giả định long call / short put của khách (cùng quy ước GEX). GLD quy ra HĐ GC 100 oz.">Số HĐ GC LP phải MUA/BÁN khi giá đi ±ΔP (gộp GC + GLD). Vùng đỏ: −Γ, LP hedge thuận chiều nên giá dễ gia tốc. Vùng xanh: +Γ, giá bị hãm. ≥ 1,000 HĐ/10 USD là cỡ LP.</p>
       </section>
+      <section class="panel expmap">
+        <header><h2 title="Kịch bản: bỏ các kỳ sắp đáo hạn và giữ nguyên OI các kỳ còn lại. Chỉ để tham khảo, không tạo tín hiệu.">Bản đồ sau đáo hạn</h2><span class="muted small" id="expMeta"></span></header>
+        <div id="expOut"><p class="muted">Đang chờ dữ liệu Options…</p></div>
+      </section>
       <section class="panel journal">
         <header><h2>Nhật ký &amp; Thống kê</h2><div class="tabs" id="jTabs"><button data-t="live" class="on">Nhật ký live</button><button data-t="bt">Backtest SMC</button></div></header>
         <div id="jOut"></div>
@@ -138,6 +142,6 @@
 
 <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <script src="smc.js?v=d7d89a76e0"></script>
-<script src="app.js?v=3993008a84"></script>
+<script src="app.js?v=7296a8beb7"></script>
 </body>
 </html>

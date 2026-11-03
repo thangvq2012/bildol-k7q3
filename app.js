@@ -1317,7 +1317,22 @@ function drawHedgeCurve(h, p) {
   ctx.textAlign = "left"; ctx.fillText(`${fmt(xs[0], 0)}`, 2, Hh - 12); ctx.textAlign = "right"; ctx.fillText(`${fmt(xs[xs.length - 1], 0)}`, W - 2, Hh - 12);
   ctx.textAlign = "left"; ctx.fillText(`HĐ/${h.win}$  ↑ −Γ gia tốc · ↓ +Γ hãm · vạch ±${h.big}`, 2, 2);
 }
-function renderAll() { renderQuote(); renderProfile(); renderKpis(); renderMacro(); renderAgent(); renderHedge(); renderJournal(); renderWarn(); renderEngineChip(); renderBuild(); renderPaper(); showAiLast(); drawOverlay(); }
+// Bản đồ sau đáo hạn + Wall sống: chỉ hiển thị, không tạo tín hiệu
+function renderExpMap() {
+  const box = $("#expOut"); if (!box) return;
+  const o = prim(), m = o?.exp_map;
+  if (!m) { box.innerHTML = `<p class="muted">Chưa có dữ liệu Options.</p>`; $("#expMeta").textContent = ""; return; }
+  const day = (e) => { const p = String(e).split("-"); return p.length === 3 ? `${p[2]}/${p[1]}` : e; };
+  const reg = (r) => (r === "POSITIVE" ? `<span class="up">+Γ</span>` : r === "NEGATIVE" ? `<span class="down">−Γ</span>` : "—");
+  const row = (lab, g, s) => `<tr><td>${lab}</td><td>${g}</td><td>${s?.flip != null ? fmt(s.flip) : "—"}</td><td>${s?.net_gex != null ? fmtK(s.net_gex) : "—"}</td><td>${reg(s?.regime)}</td></tr>`;
+  const aft = m.after.map((a) => a.empty ? `<tr><td>Sau ${day(a.expiry)}</td><td>${a.gone.toFixed(0)}%</td><td colspan="3" class="muted">Hết kỳ trong dữ liệu</td></tr>` : row(`Sau ${day(a.expiry)}`, `${a.gone.toFixed(0)}%`, a)).join("");
+  const walls = m.walls.map((w) => `<tr><td>${w.name}</td><td>${fmt(w.chart)}</td><td class="${w.live_pct >= 60 ? "up" : w.live_pct < 30 ? "down" : ""}">${w.live_pct}%</td><td>${w.half_exp ? day(w.half_exp) : "—"}</td></tr>`).join("");
+  box.innerHTML = `<div class="tablewrap"><table class="htable hedge"><thead><tr><th>Kịch bản</th><th title="Phần gamma tuyệt đối đã hết tính tới mốc này">Gamma hết</th><th>Flip</th><th>Net GEX</th><th>Chế độ</th></tr></thead><tbody>${row("Hiện tại", "0%", m.now)}${aft}</tbody></table></div>
+    <div class="tablewrap"><table class="htable hedge"><thead><tr><th>Wall</th><th>Mức</th><th title="Gamma của strike này so với strike mạnh nhất cùng phía, tại giá hiện tại">Lực</th><th title="Ngày mất từ một nửa gamma của Wall này trở lên">Hết 50%</th></tr></thead><tbody>${walls}</tbody></table></div>`;
+  $("#expMeta").textContent = `${m.source} · kịch bản, giữ nguyên OI`;
+}
+
+function renderAll() { renderQuote(); renderProfile(); renderKpis(); renderMacro(); renderAgent(); renderHedge(); renderExpMap(); renderJournal(); renderWarn(); renderEngineChip(); renderBuild(); renderPaper(); showAiLast(); drawOverlay(); }
 
 // ─────────────────────────── tài khoản Paper ───────────────────────────
 function paperLoad() {
