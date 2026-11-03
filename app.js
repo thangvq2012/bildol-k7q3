@@ -978,10 +978,11 @@ function connectBig(i = 0) {
   let urls = [f.ws, ...(f.ws_alt || [])];
   if (/fstream\.binance\.com\/ws$/.test(f.ws)) urls = ["wss://fstream.binance.com/market/ws", f.ws];
   const ws = new WebSocket(`${urls[i % urls.length]}/${f.symbol.toLowerCase()}@aggTrade`);
-  S.big.ws = ws;
+  S.big.ws = ws; S.big.lastMsg = Date.now();   // tính 60 giây từ lúc nối
   let last = 0;
   ws.onmessage = (ev) => {
     const x = JSON.parse(ev.data); if (!x || x.e !== "aggTrade") return;
+    S.big.lastMsg = Date.now();
     if (bigAdd(x.T, +x.p, +x.q, !!x.m, x.a) || Date.now() - last > 5000) { last = Date.now(); renderBig(); }
   };
   ws.onclose = () => { if (S.big.ws === ws) setTimeout(() => connectBig(i + 1), 5000); };
@@ -995,6 +996,35 @@ function startBig() {
   bigBackfill(f); connectBig(0);
 }
 setInterval(() => { if (S.big?.loaded) bigSave(); }, 60e3);
+// Canh "kết nối chết lặng": trình duyệt ngủ/đổi mạng làm luồng aggTrade đứng im mà không báo đóng
+// (03/11: tab mở từ tối hôm trước → cả phiên mới không nhận lệnh nào, Lệnh lớn = 0). XAUUSDT có giao dịch mỗi vài giây,
+// nên 60 giây không có tin = kết nối hỏng → nối lại và tải bù phần bị lỡ.
+async function bigGapFill(f) {
+  const B = S.big, path = /fapi/.test(f.kpath) ? "/fapi/v1/aggTrades" : "/api/v3/aggTrades";
+  if (!B.lastId || Date.now() - (B.lastT || 0) > 30 * 60e3) { B.loaded = false; B.sym = null; startBig(); return; }   // lỡ quá lâu → nạp lại từ đầu
+  let from = B.lastId + 1;
+  try {
+    for (let p = 0; p < 40; p++) {
+      const r = await fetch(`${f.rest}${path}?symbol=${f.symbol}&fromId=${from}&limit=1000`);
+      if (r.status === 418 || r.status === 429) { B.banned = Date.now(); break; }
+      const a = await r.json(); if (!Array.isArray(a) || !a.length) break;
+      for (const x of a) bigAdd(x.T, +x.p, +x.q, !!x.m, x.a);
+      from = a[a.length - 1].a + 1; if (a.length < 1000) break;
+      await new Promise((res) => setTimeout(res, 250));
+    }
+  } catch { }
+  renderBig(); bigSave();
+}
+function bigWatch() {
+  const B = S.big; if (!B?.loaded || S.state?.demo) return;
+  if (B.banned && Date.now() - B.banned < 5 * 60e3) return;              // đang bị Binance hạn chế → chờ 5 phút
+  if (Date.now() - (B.lastMsg || 0) > 60e3 && !B.fixing) {
+    B.fixing = true; const f = S.feed || feeds()[0];
+    connectBig(0); bigGapFill(f).finally(() => { B.fixing = false; });
+  }
+}
+setInterval(bigWatch, 20e3);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) setTimeout(bigWatch, 1500); });
 
 // ─────────────────────────── Bản web tĩnh (GitHub Pages / điện thoại) ───────────────────────────
 // γ live: tính lại Gamma Black-76/BSM từng strike theo giá hiện tại từ "gói" (giống Pine v32, analytics.pack_gamma)
