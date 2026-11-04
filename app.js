@@ -718,7 +718,7 @@ function agentState() {
 }
 function smcHtml() {
   if (!S.smc) return "";
-  return `<p class="smcplan"><b>SMC:</b> ${esc(S.smc.struct)}<br>${S.smc.plan.map(esc).join("<br>")}</p>`;
+  return `<p class="smcplan"><b>SMC (nến Binance):</b> ${esc(S.smc.struct)}<br>${S.smc.plan.map(esc).join("<br>")}</p>`;
 }
 function renderAgent() {
   const a = agentState();
@@ -732,15 +732,17 @@ function renderAgent() {
     <dl><dt>Regime</dt><dd>${a.regime}</dd><dt>Dealer</dt><dd>${dealer}</dd>
     <dt>Lệnh lớn</dt><dd>${(() => { const f = bigFlow(S.cfg?.signals?.cvd_slope_bars ?? 5); return f ? `MUA ${f.b.toFixed(0)} · BÁN ${f.s.toFixed(0)} oz → ròng ${f.d >= 0 ? "+" : "−"}${Math.abs(f.d).toFixed(0)} (${f.nb}/${f.ns} lệnh ≥ ${S.big.thr?.toFixed(0)} oz)` : "đang thu thập"; })()}</dd>
     <dt>Hedge LP</dt><dd>${(() => { const v = hedgePer(a.p), z = hZoneAt(a.p); return v == null ? "—" : `≈ ${Math.abs(Math.round(v)).toLocaleString("en-US")} HĐ/${hedgeSt().win}$ (${hTier(v)}, ${v > 0 ? "−Γ gia tốc" : "+Γ hãm"})${z ? " · trong vùng hedge lớn" : ""}`; })()}</dd>
-    <dt>Target</dt><dd>${fmt(a.target)} <span class="muted">(${esc(a.why)})</span></dd><dt>Conviction</dt><dd>${sgn(a.conv, 2)}</dd>
-    ${S.smc ? `<dt>Cấu trúc</dt><dd>${esc(S.smc.struct)}</dd>` : ""}</dl>`;
+    <dt>Target</dt><dd>${fmt(a.target)} <span class="muted">(${esc(a.why)})</span></dd><dt title="Tính từ nến và dòng tiền Binance perp, khác Conviction FXCM trên TradingView">Conviction (Binance)</dt><dd>${sgn(a.conv, 2)}</dd>
+    ${S.smc ? `<dt title="Cấu trúc theo nến Binance perp, có thể khác FXCM. Khi vào lệnh, lấy cấu trúc trên chart TradingView làm chuẩn.">Cấu trúc (Binance)</dt><dd>${esc(S.smc.struct)}</dd>` : ""}</dl>`;
   const w = Math.abs(a.conv) * 45;
   $("#fusion").innerHTML = `<b>FUSION</b> tape ${a.tape > 0 ? "↑" : a.tape < 0 ? "↓" : "·"} · DXY ${a.dxyC > 0 ? "hỗ trợ vàng" : a.dxyC < 0 ? "chống vàng" : "trung tính"} · kéo về target ${a.pull > 0 ? "↑" : a.pull < 0 ? "↓" : "·"}
     <span class="bar"><i style="left:${a.conv >= 0 ? 50 : 50 - w}%;width:${w}%;background:${a.conv >= 0 ? C.up : C.down}"></i></span>${sgn(a.conv, 2)}`;
   const dCW = L.call_wall - a.p, dPW = L.put_wall - a.p;
   let main, alt, trap;
   if (a.neg) {
-    main = `<b>Chính:</b> Negative Gamma, giá dưới Flip ${fmt(a.flip)}. Ưu tiên SELL khi hồi về ${fmt(a.flip)} hoặc theo đà thủng ${fmt(nextStrike(a.p, false))}. Không bắt đáy.`;
+    const far = Math.abs(a.flip - a.p) > 30;
+    main = far ? `<b>Chính:</b> Negative Gamma, Flip ${fmt(a.flip)} còn xa ${Math.abs(a.flip - a.p).toFixed(0)} USD nên chưa có điểm SELL gần. Không bắt đáy; chờ tín hiệu Options Flow/SMC hoặc theo đà thủng ${fmt(nextStrike(a.p, false))}.`
+      : `<b>Chính:</b> Negative Gamma, giá dưới Flip ${fmt(a.flip)}. Ưu tiên SELL khi hồi về ${fmt(a.flip)} hoặc theo đà thủng ${fmt(nextStrike(a.p, false))}. Không bắt đáy.`;
     alt = `<b>Phụ:</b> đóng nến trở lại trên ${fmt(a.flip)} kèm CVD dốc lên thì chuyển về Positive Gamma, đánh biên.`;
     trap = `<b>Bẫy:</b> râu thủng Put Wall ${fmt(L.put_wall)} rồi rút chân, CVD phân kỳ dương, Volume tăng mà ΔOI không tăng → Bear Trap BUY.`;
   } else if (a.above) {
