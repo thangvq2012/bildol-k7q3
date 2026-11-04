@@ -1280,6 +1280,15 @@ function hNext(price, up) {
   return zs.length ? (up ? zs.reduce((a, z) => (z.lo < a.lo ? z : a)) : zs.reduce((a, z) => (z.hi > a.hi ? z : a))) : null;
 }
 const nHD = (v) => (v == null ? "—" : `<span class="${v >= 0 ? "up" : "down"}">${v >= 0 ? "MUA" : "BÁN"} ${Math.abs(Math.round(v)).toLocaleString("en-US")}</span>`);
+// Hedge khi giá đứng yên: Vanna (IV đổi) + Charm (thời gian trôi). Theo quy ước LP long call / short put
+function flowTable(h) {
+  const f = h.flow; if (!f?.rows?.length) return "";
+  const sign = (v) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toLocaleString("en-US")}`;
+  const rows = f.rows.map((r) => `<tr><td>${r.label}</td>${f.sources.map((s) => `<td>${sign(r[s])}</td>`).join("")}<td class="${r.total > 0 ? "up" : r.total < 0 ? "down" : ""}"><b>${sign(r.total)}</b></td></tr>`).join("");
+  return `<p class="small" title="Giá đứng yên, OI giữ nguyên, IV đổi song song mọi strike. Đây là kịch bản theo quy ước LP long call / short put, không phải vị thế thật.">Hedge khi giá đứng yên (HĐ GC, + LP mua, − LP bán)</p>
+    <div class="tablewrap"><table class="htable hedge"><thead><tr><th>Kịch bản</th>${f.sources.map((s) => `<th>${s}</th>`).join("")}<th>Tổng</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
 function renderHedge() {
   const box = $("#hedgeOut"); if (!box) return;
   const h = hedgeSt(), p = lastPrice();
@@ -1294,7 +1303,7 @@ function renderHedge() {
   box.innerHTML = `<p class="hedgehead">Tại ${fmt(p)}: mỗi ${h.win} USD LP giao dịch ≈ <b>${Math.abs(Math.round(per ?? 0)).toLocaleString("en-US")} HĐ GC</b> · cỡ <b>${hTier(per)}</b> · ${per == null ? "" : hKind(per)}${z ? ` · <span class="hz">ĐANG TRONG VÙNG HEDGE LỚN</span>` : ""}</p>
     <div class="tablewrap"><table class="htable hedge"><thead><tr><th>ΔP USD</th>${srcs.map((s) => `<th>${s}</th>`).join("")}<th>Tổng</th><th title="Chỉ các kỳ đáo hạn ≤ 7 ngày">≤ 7 ngày</th></tr></thead><tbody>${rows}</tbody></table></div>
     <canvas id="hedgeCv" class="hedgecv" height="120"></canvas>
-    <p class="small">${zTxt(up, "↑ Vùng hedge lớn phía trên:")}<br>${zTxt(dn, "↓ Vùng hedge lớn phía dưới:")}</p>`;
+    <p class="small">${zTxt(up, "↑ Vùng hedge lớn phía trên:")}<br>${zTxt(dn, "↓ Vùng hedge lớn phía dưới:")}</p>${flowTable(h)}`;
   $("#hedgeMeta").textContent = `GC${srcs.includes("GLD") ? " + GLD" : ""} · tính lúc ${new Date(h.time).toLocaleTimeString("vi-VN")} ở ${fmt(h.price)}`;
   drawHedgeCurve(h, p);
 }
