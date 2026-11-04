@@ -180,3 +180,10 @@ html { -webkit-text-size-adjust: 100%; }
   .prof { font-size: 11px; }
   .sigcount { display: none; }
 }
+/* Bản đồ sau đáo hạn: panel hẹp trên màn hình rộng, bảng phải vừa không cần cuộn ngang */
+.expmap .tablewrap { overflow-x: visible; }
+.expmap .htable { width: 100%; table-layout: auto; }
+.expmap .htable th, .expmap .htable td { padding: 3px 4px; font-size: 10.5px; letter-spacing: 0; white-space: nowrap; }
+.expmap .htable td:first-child { white-space: normal; }
+.expmap .small { margin: 8px 0 4px; }
+.hedgep .htable th, .hedgep .htable td { padding-left: 4px; padding-right: 4px; }
