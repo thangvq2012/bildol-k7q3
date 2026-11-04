@@ -1329,6 +1329,9 @@ function renderExpMap() {
   const walls = m.walls.map((w) => `<tr><td>${w.name}</td><td>${fmt(w.chart)}</td><td class="${w.live_pct >= 60 ? "up" : w.live_pct < 30 ? "down" : ""}">${w.live_pct}%</td><td>${w.half_exp ? day(w.half_exp) : "—"}</td></tr>`).join("");
   box.innerHTML = `<div class="tablewrap"><table class="htable hedge"><thead><tr><th>Kịch bản</th><th title="Phần gamma tuyệt đối đã hết tính tới mốc này">Gamma hết</th><th>Flip</th><th>Net GEX</th><th>Chế độ</th></tr></thead><tbody>${row("Hiện tại", "0%", m.now)}${aft}</tbody></table></div>
     <div class="tablewrap"><table class="htable hedge"><thead><tr><th>Wall</th><th>Mức</th><th title="Gamma của strike này so với strike mạnh nhất cùng phía, tại giá hiện tại">Lực</th><th title="Ngày mất từ một nửa gamma của Wall này trở lên">Hết 50%</th></tr></thead><tbody>${walls}</tbody></table></div>`;
+  const ss = o.sign_stress, ssTxt = ss ? `<p class="small" title="OI không cho biết bên nào mua, bên nào bán. Đây là phép thử độ nhạy của quy ước LP long call / short put, không phải vị thế thật.">Độ bền dấu Gamma: <b>${ss.grade}</b> · chế độ chỉ đổi nếu ≥ <b>${ss.flip_pct.toFixed(0)}%</b> OI ${ss.side} ngược quy ước</p>
+    <div class="tablewrap"><table class="htable hedge"><thead><tr><th>Giả định vị thế</th><th>Flip</th><th>Net GEX</th><th>Dấu</th></tr></thead><tbody>${ss.scen.map((s) => `<tr><td>${s.name}</td><td>${s.flip != null ? fmt(s.flip) : "—"}</td><td>${fmtK(s.net_gex)}</td><td>${reg(s.regime)}</td></tr>`).join("")}</tbody></table></div>` : "";
+  box.innerHTML += ssTxt;
   $("#expMeta").textContent = `${m.source} · kịch bản, giữ nguyên OI`;
 }
 
