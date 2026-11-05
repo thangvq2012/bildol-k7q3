@@ -1087,7 +1087,7 @@ function renderBuild() {
   const el = $("#buildInfo"); if (!el || !S.state) return;
   const b = S.state.build || S.state.options_updated, cme = S.state.options?.GC?.cme;
   const age = b ? (Date.now() - new Date(b)) / 60000 : null;
-  el.textContent = `${STATIC ? "Build" : "Engine"} ${b ? new Date(b).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }) : "—"}${cme?.trade_date ? ` · CME phiên ${cme.trade_date}` : ""}${STATIC && age > 90 ? " · máy tính chưa gửi bản mới" : ""}`;
+  el.textContent = `${STATIC ? "Build" : "Engine"} ${b ? new Date(b).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }) : "—"}${cme?.trade_date ? ` · CME settle ${cme.trade_date}${cme.prev_date ? `, OI ${cme.prev_date}` : ""}` : ""}${STATIC && age > 90 ? " · máy tính chưa gửi bản mới" : ""}`;
   el.className = "build" + (STATIC && age > 24 * 60 ? " old" : "");
 }
 async function copyTV(e) {
