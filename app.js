@@ -1254,7 +1254,7 @@ function hedgeFrom(dp, price = lastPrice(), key = "all") {
 }
 function hedgePer(price = lastPrice()) { const h = hedgeSt(); return h && price != null ? interp(h.curve.dp, h.curve.per, price - h.price) : null; }
 const hTier = (v) => { const h = hedgeSt(), a = Math.abs(v ?? 0); return !h ? "" : a >= h.big ? "LP / Big Boy" : a >= h.mid ? "quỹ vừa" : "nhỏ"; };
-const hKind = (v) => (v > 0 ? "−Γ gia tốc (LP hedge thuận chiều giá)" : "+Γ hãm (LP hedge ngược chiều giá)");
+const hKind = (v) => (v > 0 ? "−Γ (giả định LP hedge thuận chiều giá)" : "+Γ (giả định LP hedge ngược chiều giá)");
 const hZoneAt = (price) => (hedgeSt()?.zones || []).find((z) => price >= z.lo && price <= z.hi) || null;
 function hNext(price, up) {
   const zs = (hedgeSt()?.zones || []).filter((z) => (up ? z.lo > price : z.hi < price));
@@ -1280,7 +1280,7 @@ function renderHedge() {
   const rows = h.moves.map((m) => `<tr><td class="${m.dp > 0 ? "up" : "down"}">${m.dp > 0 ? "+" : ""}${m.dp}</td>
     ${srcs.map((src) => `<td>${nHD(sh(src, m.dp))}</td>`).join("")}<td><b>${nHD(hedgeFrom(m.dp, p))}</b></td><td>${nHD(hedgeFrom(m.dp, p, "short"))}</td></tr>`).join("");
   const per = hedgePer(p), z = hZoneAt(p), up = hNext(p, true), dn = hNext(p, false);
-  const zTxt = (q, lab) => q ? `${lab} <b>${fmt(q.lo)}–${fmt(q.hi)}</b> (đỉnh ${Math.abs(q.peak).toLocaleString("en-US")} HĐ/${h.win}$, ${q.kind === "accel" ? "−Γ gia tốc" : "+Γ hãm"})` : `${lab} không có trong ±100 USD`;
+  const zTxt = (q, lab) => q ? `${lab} <b>${fmt(q.lo)}–${fmt(q.hi)}</b> (đỉnh ${Math.abs(q.peak).toLocaleString("en-US")} HĐ/${h.win}$, ${q.kind === "accel" ? "−Γ" : "+Γ"})` : `${lab} không có trong ±100 USD`;
   box.innerHTML = `<p class="hedgehead">Tại ${fmt(p)}: mỗi ${h.win} USD LP giao dịch ≈ <b>${Math.abs(Math.round(per ?? 0)).toLocaleString("en-US")} HĐ GC</b> · cỡ <b>${hTier(per)}</b> · ${per == null ? "" : hKind(per)}${z ? ` · <span class="hz">ĐANG TRONG VÙNG HEDGE LỚN</span>` : ""}</p>
     <div class="tablewrap"><table class="htable hedge"><thead><tr><th>ΔP USD</th>${srcs.map((s) => `<th>${s}</th>`).join("")}<th>Tổng</th><th title="Chỉ các kỳ đáo hạn ≤ 7 ngày">≤ 7 ngày</th></tr></thead><tbody>${rows}</tbody></table></div>
     <canvas id="hedgeCv" class="hedgecv" height="120"></canvas>
@@ -1305,7 +1305,7 @@ function drawHedgeCurve(h, p) {
   const xp = X(p); ctx.strokeStyle = C.fg; ctx.beginPath(); ctx.moveTo(xp, 0); ctx.lineTo(xp, Hh); ctx.stroke();
   ctx.font = "10px 'IBM Plex Mono', monospace"; ctx.fillStyle = C.muted; ctx.textBaseline = "top";
   ctx.textAlign = "left"; ctx.fillText(`${fmt(xs[0], 0)}`, 2, Hh - 12); ctx.textAlign = "right"; ctx.fillText(`${fmt(xs[xs.length - 1], 0)}`, W - 2, Hh - 12);
-  ctx.textAlign = "left"; ctx.fillText(`HĐ/${h.win}$  ↑ −Γ gia tốc · ↓ +Γ hãm · vạch ±${h.big}`, 2, 2);
+  ctx.textAlign = "left"; ctx.fillText(`HĐ/${h.win}$  ↑ −Γ · ↓ +Γ · vạch ±${h.big}`, 2, 2);
 }
 // Bản đồ sau đáo hạn + Wall sống: chỉ hiển thị, không tạo tín hiệu
 function renderExpMap() {
