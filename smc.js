@@ -439,6 +439,59 @@ const SMC = (() => {
     return { orders, fin };
   }
 
+  // ───── KB4/KB5 (đăng ký 06/11/2026, chưa kiểm chứng): H4 đóng nến tạo đỉnh/đáy, M15 kéo Fibo từng nhịp ─────
+  // KB4 Limit ở Fibo 0.705, KB5 Limit ở chính đỉnh/đáy nhịp. Chạy trên dữ liệu thật, không qua hệ lật ngược.
+  function kb4(c, ms, h4c, h4s, sec, opt) {
+    const n = c.length, orders = [], lvl = opt.oteLo ?? 0.705, buf = opt.slBuf ?? 3, tfSec = opt.tfSec || 900;
+    const expiry = Math.round(((opt.expiryH4 ?? 6) * sec) / tfSec), reg = new Array(h4c.length).fill(0);
+    for (let j = 1, f = 0; j < h4c.length; j++) {
+      const k = h4c[j], p = h4c[j - 1];
+      if (k.close < p.low && k.close < k.open) f = -1; else if (k.close > p.high && k.close > k.open) f = 1;
+      reg[j] = f;
+    }
+    let T = null, B = null, legS = null, legB = null;
+    const place = (i, side, a, b, j) => { // a = đỉnh/đáy gốc của nhịp, b = điểm cuối nhịp
+      const dir = side === "BUY" ? 1 : -1, tr = h4s[j]?.trend, cl = (side === "SELL" ? tr === 1 : tr === -1) ? 1 : 2;
+      for (const [kb, entry] of [[4, b + (a - b) * lvl], [5, a]]) {
+        const sl = a - dir * buf, risk = (entry - sl) * dir;
+        if (!(risk > 0)) continue;
+        const rr0 = ((b - entry) * dir) / risk, tp1 = rr0 > 3 ? entry + 3 * risk * dir : b;
+        const base = { created: i, createdT: c[i].time, h4: j, cl, kb, side, type: "limit", src: "k" + i, entry, sl, tp1, tp2: null, tp3: null, why: `${kb === 4 ? "Fibo OTE" : side === "SELL" ? "đỉnh" : "đáy"} M15 nhịp ${a.toFixed(2)} → ${b.toFixed(2)}, chưa kiểm chứng` };
+        orders.push(rr0 < 1 ? { ...base, status: "skip", rr: rr0, why: `TP1 chỉ ${rr0.toFixed(1)}R < 1R` } : { ...base, rr: Math.min(3, rr0), tpNote: rr0 > 3 ? " (3R)" : "", status: "pending", fillI: null });
+      }
+    };
+    const cancel = (i, side) => { for (const o of orders) if (o.side === side && o.status === "pending" && o.created < i) { o.status = "missed"; o.closeI = i; } };
+    for (let i = 2; i < n; i++) {
+      const k = c[i], m = ms[i];
+      for (const o of orders) {
+        if (i <= o.created || (o.status !== "pending" && o.status !== "open")) continue;
+        const dir = o.side === "BUY" ? 1 : -1, hitE = dir > 0 ? k.low <= o.entry : k.high >= o.entry;
+        const hitSL = dir > 0 ? k.low <= o.sl : k.high >= o.sl, hitTP = dir > 0 ? k.high >= o.tp1 : k.low <= o.tp1;
+        if (o.status === "pending") {
+          if (hitE) { o.status = "open"; o.fillI = i; if (hitSL) { o.status = "sl"; o.closeI = i; } }
+          else if (hitTP || i - o.created > expiry) { o.status = "missed"; o.closeI = i; }
+        } else if (hitSL) { o.status = "sl"; o.closeI = i; }
+        else if (hitTP) { o.status = "tp1"; o.closeI = i; }
+      }
+      if (T && m.tTop != null && m.tTopI === i && m.tTop > T.p) T = { p: m.tTop, i };
+      if (B && m.tBot != null && m.tBotI === i && m.tBot < B.p) B = { p: m.tBot, i };
+      if (m.fm === -1 && m.tTop != null) T = { p: m.tTop, i: m.tTopI };
+      if (m.fm === 1 && m.tBot != null) B = { p: m.tBot, i: m.tBotI };
+      const j = closedIdx(h4c, sec, k.time), r = j >= 0 ? reg[j] : 0;
+      if (r !== -1) { cancel(i, "SELL"); legS = null; }
+      if (r !== 1) { cancel(i, "BUY"); legB = null; }
+      if (r === -1 && m.tBot != null && T) {
+        const fresh = m.fm === 1 && m.tBotI > T.i, deeper = legS && m.tBotI === i && m.tBot < legS.b;
+        if (fresh || deeper) { cancel(i, "SELL"); legS = { a: fresh ? T.p : legS.a, b: m.tBot }; place(i, "SELL", legS.a, legS.b, j); }
+      }
+      if (r === 1 && m.tTop != null && B) {
+        const fresh = m.fm === -1 && m.tTopI > B.i, deeper = legB && m.tTopI === i && m.tTop > legB.b;
+        if (fresh || deeper) { cancel(i, "BUY"); legB = { a: fresh ? B.p : legB.a, b: m.tTop }; place(i, "BUY", legB.a, legB.b, j); }
+      }
+    }
+    return orders;
+  }
+
   // ───── phân tích đầy đủ: khung chart + H4, cả hai chiều ─────
   // opt: { oteLo, oteHi, eqTol, trendline, sweepWin, slBuf, tol, expiryH4, tfName, sessionOk(t), levels: {cw,pw,flip} }
   function analyze(c, h4c, sec, opt) {
@@ -451,7 +504,7 @@ const SMC = (() => {
     const up = setupsDown(cm, msM, LM, hm, h4sM, HM, sec, opt);
     const neg = (x) => (x == null ? null : -x);
     const flipO = (o) => ({ ...o, side: o.side === "BUY" ? "SELL" : "BUY", entry: -o.entry, sl: -o.sl, tp1: neg(o.tp1), tp2: neg(o.tp2), tp3: neg(o.tp3), why: o.why.replace(/(\d+\.\d+)/g, (x) => (-parseFloat(x)).toFixed(2)).replace(/-/g, "").replace(/đáy/g, "§").replace(/đỉnh/g, "đáy").replace(/§/g, "đỉnh").replace(/IMB (\d)/, "IMB $1"), up: true });
-    res.orders = [...down.orders, ...up.orders.map(flipO)].sort((a, b) => a.created - b.created);
+    res.orders = [...down.orders, ...up.orders.map(flipO), ...(opt.kb4 && opt.tfSec === 900 ? kb4(c, ms, h4c, h4s, sec, opt) : [])].sort((a, b) => a.created - b.created);
     const f = (x) => (x == null || !isFinite(x) ? "—" : x.toFixed(2));
     for (const o of res.orders) {
       const name = `CL${o.cl}-KB${o.kb}`, kind = o.cl === 1 ? (o.side === "BUY" ? "Buy hồi" : "Sell hồi") : (o.side === "SELL" ? "Sell thuận" : "Buy thuận");
@@ -540,6 +593,6 @@ const SMC = (() => {
     return Math.max(d0 - Math.ceil((nBars * tfSec * 1.4) / day) * day, h4From);
   }
 
-  return { structure, liquidity, oldLevels, kb1v3, kb1v3Fill, formMarks, analyze, htfAt, closedIdx, fxOpen, bucketOf, aggregate, ltfStart, nyOffset };
+  return { structure, liquidity, oldLevels, kb1v3, kb1v3Fill, kb4, formMarks, analyze, htfAt, closedIdx, fxOpen, bucketOf, aggregate, ltfStart, nyOffset };
 })();
 if (typeof module !== "undefined") module.exports = SMC;

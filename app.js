@@ -156,6 +156,7 @@ function smcCfg() {
     oteLo: m.ote_lo ?? 0.705, oteHi: m.ote_hi ?? 0.79, eqTol: m.eq_tol ?? 1.5, trendline: m.trendline ?? true,
     sweepWin: m.sweep_window ?? 6, slBuf: Math.min(5, m.sl_buffer ?? 3), tol: m.touch_tol ?? sc.touch_tol ?? 2, expiryH4: m.expiry_h4 ?? 6, kb3Atr: m.kb3_atr ?? 2, kb2Once: m.kb2_once ?? true,
     kb2: [300, 900].includes(TF_SEC[S.tf]),   // KB2 (confirm) chỉ theo cấu trúc M5 / M15
+    kb4: !!$("#lyKB4")?.checked,   // KB4/KB5 chưa đạt kiểm chứng, mặc định tắt
     sessionOk: m.session_only ? inUsSession : null, tfSec: TF_SEC[S.tf], tfName: S.tf.toUpperCase().replace(/^(\d+)M$/, "M$1").replace(/^(\d+)H$/, "H$1"),
     nextStrike: (p, above) => nextStrike(p, above),
     levels: (() => { const L = primaryLevels(); return L ? { cw: L.call_wall, pw: L.put_wall, flip: L.gamma_flip } : {}; })(),
@@ -301,7 +302,7 @@ function notifyPending(o) {
     new Notification(`${o.name} ${o.side} LIMIT ${fmt(o.entry)}`, { body: `${o.txt}\nSL ${fmt(o.sl)} · TP1 ${fmt(o.tp1)} · TP2 ${fmt(o.tp2)}` });
 }
 function addSmcSignal(s) {
-  if ($("#autoTrade").checked && !S.paper.pos) {
+  if ($("#autoTrade").checked && !S.paper.pos && !(s.kb >= 4)) {
     const plan = planFor(s);
     paperOpen(s.side, plan.lots, s.sl, s.tp1, `Tự động: ${s.type}`);
   }
@@ -1456,6 +1457,7 @@ function bind() {
   ["#lyKey", "#lyGLD", "#lyGex", "#lyVP"].forEach((s) => $(s).addEventListener("change", drawOverlay));
   $("#lyMk").addEventListener("change", setMarkers);
   $("#lySMC").addEventListener("change", () => { setMarkers(); drawOverlay(); });
+  $("#lyKB4")?.addEventListener("change", () => { runSMC(); setMarkers(); drawOverlay(); });
   $("#primarySrc").addEventListener("change", (e) => { S.primary = e.target.value; try { localStorage.setItem("bildol.primary", S.primary); } catch { } replaySignals(); renderAll(); });
   $("#profTabs").addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
