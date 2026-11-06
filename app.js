@@ -531,6 +531,11 @@ function drawSMC(ctx, plotW, plotH) {
       ctx.fillStyle = C.mag; ctx.fillText(`${L.n >= 2 ? (kind === "đỉnh" ? "EQH×" : "EQL×") + L.n : "$ " + kind} ${f(L.p)}`, plotW - 6, y - 7);
     }
   }
+  // KB4 chờ: chỉ setup mới nhất của khung đang xem
+  if (R.kb4 && R.kb4.hi != null) {
+    const K = R.kb4, sell = K.side === "SELL";
+    box(K.aT, K.lo, K.hi, sell ? "rgba(229,83,75,.16)" : "rgba(38,179,132,.16)", sell ? "rgba(229,83,75,.9)" : "rgba(38,179,132,.9)", `KB4 chờ ${K.side} · OTE ${f(K.lo)}–${f(K.hi)} · SL ${f(K.sl)} · TP ${f(K.tp)}${K.touched ? " · đã chạm" : ""}`, "top");
+  }
   // đường nối mức H4 cũ tới nến quét, khớp TradingView
   for (const w of R.oldSweeps || []) {
     const yy = Yr(w.p); if (yy == null || yy < 0 || yy > plotH || !c[w.from] || !c[w.i]) continue;

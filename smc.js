@@ -483,6 +483,44 @@ const SMC = (() => {
     return orders;
   }
 
+  // ───── KB4 chờ (hiển thị, chưa kiểm chứng): một setup mới nhất mỗi khung M5/M15, thuận nến tạo H4 gần nhất đã đóng ─────
+  // Chỉ có setup khi nến tạo đáy (SELL) hoặc nến tạo đỉnh (BUY) đã đóng. Tính từ nến H4 tạo đỉnh/đáy đó trở đi.
+  function kb4Setup(c, ms, h4c, sec, opt = {}) {
+    const n = c.length, lo = opt.oteLo ?? 0.705, hi = opt.oteHi ?? 0.79, buf = opt.slBuf ?? 3;
+    let f = 0, t0 = null, j = 1, T = null, B = null, P = null, reg = 0;
+    const h4Upto = closedIdx(h4c, sec, c[n - 1].time + (opt.tfSec || 300));
+    for (let x = 1; x <= h4Upto; x++) {
+      const k = h4c[x], p = h4c[x - 1];
+      const nf = k.close < p.low && k.close < k.open ? -1 : k.close > p.high && k.close > k.open ? 1 : 0;
+      if (nf && nf !== f) { f = nf; t0 = k.time; }
+    }
+    if (!f) return null;
+    for (let i = 1; i < n; i++) {
+      const k = c[i], m = ms[i], r = (() => { const q = closedIdx(h4c, sec, k.time); while (j <= q) { const a = h4c[j], b = h4c[j - 1], nf = a.close < b.low && a.close < a.open ? -1 : a.close > b.high && a.close > a.open ? 1 : 0; if (nf) reg = nf; j++; } return reg; })();
+      if (T && m.tTop != null && m.tTopI === i && m.tTop > T.p) T = { p: m.tTop, i };
+      if (B && m.tBot != null && m.tBotI === i && m.tBot < B.p) B = { p: m.tBot, i };
+      if (m.fm === -1 && m.tTop != null) T = { p: m.tTop, i: m.tTopI };
+      if (m.fm === 1 && m.tBot != null) B = { p: m.tBot, i: m.tBotI };
+      if (P && P.r !== r) P = null;
+      if (k.time < t0 || r !== f) continue;
+      if (r === -1) {
+        if (P && k.close > P.a) P = null;
+        if (m.fm === 1 && m.tBot != null && T && m.tBotI > T.i) P = { r, a: T.p, aI: T.i, b: m.tBot, bI: m.tBotI, at: i };
+        else if (P && m.tBot != null && m.tBotI === i && m.tBot < P.b) { P.b = m.tBot; P.bI = i; }
+      } else {
+        if (P && k.close < P.a) P = null;
+        if (m.fm === -1 && m.tTop != null && B && m.tTopI > B.i) P = { r, a: B.p, aI: B.i, b: m.tTop, bI: m.tTopI, at: i };
+        else if (P && m.tTop != null && m.tTopI === i && m.tTop > P.b) { P.b = m.tTop; P.bI = i; }
+      }
+    }
+    if (!P) return { side: f === -1 ? "SELL" : "BUY", t0, wait: true };
+    const e1 = P.b + (P.a - P.b) * lo, e2 = P.b + (P.a - P.b) * hi;
+    const stop = P.r === -1 ? P.a + buf : P.a - buf, risk = Math.abs(e1 - stop), rr = Math.abs(P.b - e1) / risk;
+    let touched = false;
+    for (let i = P.at + 1; i < n; i++) if (P.r === -1 ? c[i].high >= e1 : c[i].low <= e1) touched = true;
+    return { side: P.r === -1 ? "SELL" : "BUY", t0, a: P.a, b: P.b, aT: c[P.aI].time, bT: c[P.bI].time, lo: Math.min(e1, e2), hi: Math.max(e1, e2), entry: e1, sl: stop, tp: P.b, rr, touched };
+  }
+
   // ───── phân tích đầy đủ: khung chart + H4, cả hai chiều ─────
   // opt: { oteLo, oteHi, eqTol, trendline, sweepWin, slBuf, tol, expiryH4, tfName, sessionOk(t), levels: {cw,pw,flip} }
   function analyze(c, h4c, sec, opt) {
@@ -511,6 +549,7 @@ const SMC = (() => {
       if (m.ev) res.events.push({ i, kind: Math.abs(m.ev) === 2 ? "CHoCH" : "BOS", dir: Math.sign(m.ev), p: m.brk, from: m.brkI });
       if (L.sw[i]) { if (L.sw[i].bear) res.sweeps.push({ i, side: "top", txt: L.sw[i].bear.join(" + ") }); if (L.sw[i].bull) res.sweeps.push({ i, side: "bot", txt: L.sw[i].bull.join(" + ") }); }
     }
+    if (opt.tfSec === 300 || opt.tfSec === 900) res.kb4 = kb4Setup(c, ms, h4c, sec, opt);
     res.ms = ms; res.liqH = L.liqH; res.liqL = L.liqL; res.tl = L.tl; res.forms = formMarks(c, ms);
     // chỉ hiển thị: nến quét mức H4 cũ khi đang xem H4 (không tạo lệnh)
     if (sec === opt.tfSec) {
@@ -584,6 +623,6 @@ const SMC = (() => {
     return Math.max(d0 - Math.ceil((nBars * tfSec * 1.4) / day) * day, h4From);
   }
 
-  return { structure, liquidity, oldLevels, kb1v3, kb1v3Fill, kb4, formMarks, analyze, htfAt, closedIdx, fxOpen, bucketOf, aggregate, ltfStart, nyOffset };
+  return { structure, liquidity, oldLevels, kb1v3, kb1v3Fill, kb4, kb4Setup, formMarks, analyze, htfAt, closedIdx, fxOpen, bucketOf, aggregate, ltfStart, nyOffset };
 })();
 if (typeof module !== "undefined") module.exports = SMC;
