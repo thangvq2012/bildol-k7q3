@@ -531,6 +531,11 @@ function drawSMC(ctx, plotW, plotH) {
       ctx.fillStyle = C.mag; ctx.fillText(`${L.n >= 2 ? (kind === "đỉnh" ? "EQH×" : "EQL×") + L.n : "$ " + kind} ${f(L.p)}`, plotW - 6, y - 7);
     }
   }
+  // đường nối mức H4 cũ tới nến quét, khớp TradingView
+  for (const w of R.oldSweeps || []) {
+    const yy = Yr(w.p); if (yy == null || yy < 0 || yy > plotH || !c[w.from] || !c[w.i]) continue;
+    hline(ctx, yy, X(c[w.from].time), X(c[w.i].time), C.mag, 1, [4, 3], 0.8);
+  }
   // trendline nối 2 đỉnh/đáy chính thức
   if (R.tl && c[R.tl.a.i] && c[R.tl.b.i]) {
     const xa = X(c[R.tl.a.i].time), ya = Yr(R.tl.a.p), xb = X(c[R.tl.b.i].time), yb = Yr(R.tl.b.p);
@@ -673,7 +678,7 @@ function setMarkers() {
     // nến quét thanh khoản (chỉ tại 4 loại thanh khoản của khung này, xét khi nến đã đóng)
     // mã loại: $ = đỉnh/đáy gần nhất · EQH/EQL = đỉnh/đáy bằng nhau · TL = trendline
     const swCode = (t, top) => [/gần nhất/.test(t) && "$", /bằng nhau/.test(t) && (top ? "EQH" : "EQL"), /trendline/.test(t) && "TL"].filter(Boolean).join("+");
-    for (const w of S.smc.oldSweeps || []) if (c[w.i]) mk.push({ time: c[w.i].time + TZ, position: w.side === "top" ? "aboveBar" : "belowBar", color: C.mag, shape: "circle", size: 0.5, text: "✕ H4 cũ " + w.p.toFixed(2) });
+    for (const w of S.smc.oldSweeps || []) if (c[w.i]) mk.push({ time: c[w.i].time + TZ, position: w.side === "top" ? "aboveBar" : "belowBar", color: C.mag, shape: "circle", size: 0.5, text: "✕ H4 cũ" });
     for (const w of S.smc.sweeps) if (c[w.i]) mk.push({ time: c[w.i].time + TZ, position: w.side === "top" ? "aboveBar" : "belowBar", color: C.mag, shape: "circle", size: 0.5, text: "✕ " + swCode(w.txt, w.side === "top") });
     // nến tạo (▼/▲ nhỏ) và nến xác nhận (■) của đỉnh/đáy thuộc cấu trúc khung này; mờ = đỉnh/đáy tạm đang chờ
     for (const F of S.smc.forms || []) {
