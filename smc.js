@@ -196,6 +196,82 @@ const SMC = (() => {
     return { sw, liqH: curH, liqL: curL, tl };
   }
 
+  // ───── v3 (đăng ký 06/11/2026): mức cũ và KB1 đặt ngay khi nến quét đóng. Không tham gia lệnh v1 ─────
+  // Mức cũ: đỉnh tạm có nến tạo đỉnh và mọi đỉnh chính thức, giữ tới khi bị đóng cửa vượt hoặc bị quét một lần. Đáy đối xứng.
+  function oldLevels(c, ms) {
+    const n = c.length, sw = new Array(n).fill(null), T = [], B = [];
+    let lt = null, lb = null;
+    for (let i = 1; i < n; i++) {
+      const k = c[i], m = ms[i];
+      // đỉnh/đáy tạm vừa vươn xa hơn thì dời mức trước khi xét quét
+      if (lt && m.tTop != null && m.tTopI === i && m.tTop > lt.p) { lt.p = m.tTop; lt.i = i; }
+      if (lb && m.tBot != null && m.tBotI === i && m.tBot < lb.p) { lb.p = m.tBot; lb.i = i; }
+      if (m.tTop == null) lt = null;
+      if (m.tBot == null) lb = null;
+      const bear = [], bull = [];
+      for (let j = T.length - 1; j >= 0; j--) {
+        const x = T[j];
+        if (k.close > x.p) T.splice(j, 1);
+        else if (k.high > x.p) { bear.push(x); T.splice(j, 1); if (x === lt) lt = null; }
+      }
+      for (let j = B.length - 1; j >= 0; j--) {
+        const x = B[j];
+        if (k.close < x.p) B.splice(j, 1);
+        else if (k.low < x.p) { bull.push(x); B.splice(j, 1); if (x === lb) lb = null; }
+      }
+      if (bear.length || bull.length) sw[i] = { bear: bear.length ? bear : null, bull: bull.length ? bull : null };
+      if (m.fm === -1 && m.tTop != null && m.tTopI < i + 1) { lt = { p: m.tTop, i: m.tTopI }; if (!T.some((x) => x.i === lt.i) && k.close <= lt.p) T.push(lt); }
+      if (m.fm === 1 && m.tBot != null && m.tBotI < i + 1) { lb = { p: m.tBot, i: m.tBotI }; if (!B.some((x) => x.i === lb.i) && k.close >= lb.p) B.push(lb); }
+      if (m.nTop && !T.some((x) => x.i === m.oTopI) && k.close <= m.oTop) T.push({ p: m.oTop, i: m.oTopI });
+      if (m.nBot && !B.some((x) => x.i === m.oBotI) && k.close >= m.oBot) B.push({ p: m.oBot, i: m.oBotI });
+    }
+    return { sw, tops: T, bots: B };
+  }
+
+  // Lệnh KB1 v3 trên H4. opt.slPct: đệm SL theo tỷ lệ giá, không có thì dùng opt.slBuf (USD)
+  function kb1v3(c, ms, O, opt = {}) {
+    const out = [], buf = (k) => (opt.slPct != null ? opt.slPct * k.close : opt.slBuf ?? 3);
+    const plan = (j, side, entry, sl, cand, lv) => {
+      const dir = side === "BUY" ? 1 : -1, risk = (entry - sl) * dir;
+      if (!(risk > 0)) return;
+      const has = cand != null && (cand - entry) * dir > 0;
+      let tp1 = has ? cand : entry + 3 * risk * dir;
+      const rr = ((tp1 - entry) * dir) / risk;
+      if (rr < 1) { out.push({ j, side, entry, sl, tp1, rr, level: lv, status: "skip" }); return; }
+      if (rr > 3) tp1 = entry + 3 * risk * dir;
+      out.push({ j, side, entry, sl, tp1, rr: Math.min(3, rr), level: lv, status: "pending" });
+    };
+    for (let j = 1; j < c.length; j++) {
+      const s = O.sw[j], st = ms[j], k = c[j];
+      if (!s) continue;
+      if (s.bear && st.trend === 1) plan(j, "SELL", k.high - (k.high - Math.max(k.open, k.close)) / 2, k.high + buf(k), st.oTop, Math.max(...s.bear.map((x) => x.p)));
+      if (s.bull && st.trend === -1) plan(j, "BUY", k.low + (Math.min(k.open, k.close) - k.low) / 2, k.low - buf(k), st.oBot, Math.min(...s.bull.map((x) => x.p)));
+    }
+    return out;
+  }
+
+  // Khớp lệnh v3 trên nến nhỏ: nến khớp chỉ xét SL; TP trước khi khớp = không khớp; hết hạn sau expiryH4 nến H4
+  function kb1v3Fill(orders, h4c, sec, rows, expiryH4 = 6) {
+    let p = 0;
+    for (const o of orders) {
+      if (o.status !== "pending") continue;
+      const t0 = h4c[o.j].time + sec, tEnd = (h4c[Math.min(o.j + expiryH4, h4c.length - 1)]?.time ?? t0) + sec;
+      while (p < rows.length && rows[p].time < t0) p++;
+      const dir = o.side === "BUY" ? 1 : -1;
+      for (let i = p; i < rows.length; i++) {
+        const k = rows[i], hitE = dir > 0 ? k.low <= o.entry : k.high >= o.entry;
+        const hitSL = dir > 0 ? k.low <= o.sl : k.high >= o.sl, hitTP = dir > 0 ? k.high >= o.tp1 : k.low <= o.tp1;
+        if (o.status === "pending") {
+          if (hitE) { o.status = "open"; o.fillT = k.time; if (hitSL) { o.status = "sl"; o.closeT = k.time; break; } }
+          else if (hitTP) { o.status = "missed"; break; }
+          else if (k.time >= tEnd) { o.status = "expired"; break; }
+        } else if (hitSL) { o.status = "sl"; o.closeT = k.time; break; }
+        else if (hitTP) { o.status = "tp"; o.closeT = k.time; break; }
+      }
+    }
+    return orders;
+  }
+
   const mirror = (c) => c.map((k) => ({ time: k.time, open: -k.open, high: -k.low, low: -k.high, close: -k.close, vol: k.vol, delta: -(k.delta || 0) }));
   // vị trí nến H4 đã đóng gần nhất tại thời điểm t (-1 nếu chưa có)
   function closedIdx(h4c, sec, t) {
@@ -392,6 +468,12 @@ const SMC = (() => {
       if (L.sw[i]) { if (L.sw[i].bear) res.sweeps.push({ i, side: "top", txt: L.sw[i].bear.join(" + ") }); if (L.sw[i].bull) res.sweeps.push({ i, side: "bot", txt: L.sw[i].bull.join(" + ") }); }
     }
     res.ms = ms; res.liqH = L.liqH; res.liqL = L.liqL; res.tl = L.tl; res.forms = formMarks(c, ms);
+    // chỉ hiển thị: nến quét mức H4 cũ khi đang xem H4 (không tạo lệnh)
+    if (sec === opt.tfSec) {
+      const O = oldLevels(c, ms);
+      res.oldSweeps = [];
+      O.sw.forEach((x, i) => { if (!x) return; for (const q of x.bear || []) res.oldSweeps.push({ i, from: q.i, p: q.p, side: "top" }); for (const q of x.bull || []) res.oldSweeps.push({ i, from: q.i, p: q.p, side: "bot" }); });
+    }
     // khung đang hoạt động: H4 giảm (down) hoặc H4 tăng (up, quy đổi về giá thật)
     const hk = closedIdx(h4c, sec, c[c.length - 1].time), hs = hk >= 0 ? h4s[hk] : null, m = ms[ms.length - 1];
     const T = (i) => (i == null ? null : h4c[i].time);
@@ -458,6 +540,6 @@ const SMC = (() => {
     return Math.max(d0 - Math.ceil((nBars * tfSec * 1.4) / day) * day, h4From);
   }
 
-  return { structure, liquidity, formMarks, analyze, htfAt, closedIdx, fxOpen, bucketOf, aggregate, ltfStart, nyOffset };
+  return { structure, liquidity, oldLevels, kb1v3, kb1v3Fill, formMarks, analyze, htfAt, closedIdx, fxOpen, bucketOf, aggregate, ltfStart, nyOffset };
 })();
 if (typeof module !== "undefined") module.exports = SMC;
