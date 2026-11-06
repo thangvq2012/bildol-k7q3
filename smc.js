@@ -197,33 +197,24 @@ const SMC = (() => {
   }
 
   // ───── v3 (đăng ký 06/11/2026): mức cũ và KB1 đặt ngay khi nến quét đóng. Không tham gia lệnh v1 ─────
-  // Mức cũ: đỉnh tạm có nến tạo đỉnh và mọi đỉnh chính thức, giữ tới khi bị đóng cửa vượt hoặc bị quét một lần. Đáy đối xứng.
+  // Mức cũ: đỉnh tạm đứng ngay trước BOS/CHoCH giảm (bản thân là đỉnh gần nhất lúc phá), giữ tới khi bị đóng cửa vượt hoặc bị quét một lần. Đáy đối xứng.
   function oldLevels(c, ms) {
     const n = c.length, sw = new Array(n).fill(null), T = [], B = [];
-    let lt = null, lb = null;
     for (let i = 1; i < n; i++) {
-      const k = c[i], m = ms[i];
-      // đỉnh/đáy tạm vừa vươn xa hơn thì dời mức trước khi xét quét
-      if (lt && m.tTop != null && m.tTopI === i && m.tTop > lt.p) { lt.p = m.tTop; lt.i = i; }
-      if (lb && m.tBot != null && m.tBotI === i && m.tBot < lb.p) { lb.p = m.tBot; lb.i = i; }
-      if (m.tTop == null) lt = null;
-      if (m.tBot == null) lb = null;
-      const bear = [], bull = [];
+      const k = c[i], m = ms[i], p = ms[i - 1], bear = [], bull = [];
       for (let j = T.length - 1; j >= 0; j--) {
         const x = T[j];
         if (k.close > x.p) T.splice(j, 1);
-        else if (k.high > x.p) { bear.push(x); T.splice(j, 1); if (x === lt) lt = null; }
+        else if (k.high > x.p) { bear.push(x); T.splice(j, 1); }
       }
       for (let j = B.length - 1; j >= 0; j--) {
         const x = B[j];
         if (k.close < x.p) B.splice(j, 1);
-        else if (k.low < x.p) { bull.push(x); B.splice(j, 1); if (x === lb) lb = null; }
+        else if (k.low < x.p) { bull.push(x); B.splice(j, 1); }
       }
       if (bear.length || bull.length) sw[i] = { bear: bear.length ? bear : null, bull: bull.length ? bull : null };
-      if (m.fm === -1 && m.tTop != null && m.tTopI < i + 1) { lt = { p: m.tTop, i: m.tTopI }; if (!T.some((x) => x.i === lt.i) && k.close <= lt.p) T.push(lt); }
-      if (m.fm === 1 && m.tBot != null && m.tBotI < i + 1) { lb = { p: m.tBot, i: m.tBotI }; if (!B.some((x) => x.i === lb.i) && k.close >= lb.p) B.push(lb); }
-      if (m.nTop && !T.some((x) => x.i === m.oTopI) && k.close <= m.oTop) T.push({ p: m.oTop, i: m.oTopI });
-      if (m.nBot && !B.some((x) => x.i === m.oBotI) && k.close >= m.oBot) B.push({ p: m.oBot, i: m.oBotI });
+      if (m.ev < 0 && p.tTop != null && k.close <= p.tTop) T.push({ p: p.tTop, i: p.tTopI });
+      if (m.ev > 0 && p.tBot != null && k.close >= p.tBot) B.push({ p: p.tBot, i: p.tBotI });
     }
     return { sw, tops: T, bots: B };
   }
