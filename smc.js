@@ -502,20 +502,21 @@ const SMC = (() => {
       if (m.fm === -1 && m.tTop != null) T = { p: m.tTop, i: m.tTopI };
       if (m.fm === 1 && m.tBot != null) B = { p: m.tBot, i: m.tBotI };
       if (P && P.r !== r) P = null;
+      if (P && m.trend !== P.r) P = null;   // cấu trúc khung nhỏ đổi ngược chiều H4: đứng ngoài, chờ CHoCH
       if (k.time < t0 || r !== f) continue;
       if (r === -1) {
         if (P && k.close > P.a) P = null;
-        if (m.fm === 1 && m.tBot != null && T && m.tBotI > T.i) P = { r, a: T.p, aI: T.i, b: m.tBot, bI: m.tBotI, at: i };
+        if (m.fm === 1 && m.tBot != null && T && m.tBotI > T.i && m.trend === -1) P = { r, a: T.p, aI: T.i, b: m.tBot, bI: m.tBotI, at: i };
         else if (P && m.tBot != null && m.tBotI === i && m.tBot < P.b) { P.b = m.tBot; P.bI = i; }
         if (P && k.close < P.b) P = null; // đã về TP hoặc thủng đáy nhịp: chờ nến tạo đáy mới
       } else {
         if (P && k.close < P.a) P = null;
-        if (m.fm === -1 && m.tTop != null && B && m.tTopI > B.i) P = { r, a: B.p, aI: B.i, b: m.tTop, bI: m.tTopI, at: i };
+        if (m.fm === -1 && m.tTop != null && B && m.tTopI > B.i && m.trend === 1) P = { r, a: B.p, aI: B.i, b: m.tTop, bI: m.tTopI, at: i };
         else if (P && m.tTop != null && m.tTopI === i && m.tTop > P.b) { P.b = m.tTop; P.bI = i; }
         if (P && k.close > P.b) P = null;
       }
     }
-    if (!P) return { side: f === -1 ? "SELL" : "BUY", t0, wait: true };
+    if (!P) return { side: f === -1 ? "SELL" : "BUY", t0, wait: true, tfTrend: ms[n - 1].trend, need: ms[n - 1].trend === f ? "pair" : "choch" };
     const e1 = P.b + (P.a - P.b) * lo, e2 = P.b + (P.a - P.b) * hi;
     const stop = P.r === -1 ? P.a + buf : P.a - buf, risk = Math.abs(e1 - stop), rr = Math.abs(P.b - e1) / risk;
     let touched = false;
