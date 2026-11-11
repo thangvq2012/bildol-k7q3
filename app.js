@@ -535,6 +535,12 @@ function drawSMC(ctx, plotW, plotH) {
   if (R.kb4 && R.kb4.hi != null) {
     const K = R.kb4, sell = K.side === "SELL";
     box(K.aT, K.lo, K.hi, sell ? "rgba(229,83,75,.16)" : "rgba(38,179,132,.16)", sell ? "rgba(229,83,75,.9)" : "rgba(38,179,132,.9)", `KB4 chờ ${K.side} · OTE ${f(K.lo)}–${f(K.hi)} · SL ${f(K.sl)} · TP ${f(K.tp)}${K.touched ? " · đã chạm" : ""}`, "top");
+  } else if (R.kb4 && R.kb4.wait) {
+    // KB4 đứng ngoài: H4 nhiễu (chưa kiểm chứng) hoặc cấu trúc khung nhỏ ngược chiều H4 (luật 09/11)
+    const K = R.kb4, h4 = K.side === "SELL" ? "▼" : "▲", tf = K.tfTrend === 1 ? "▲" : K.tfTrend === -1 ? "▼" : "—";
+    const txt = K.need === "noise" ? `KB4: H4 ${h4} nhiễu — đứng ngoài, chờ mốc chính thức H4 (chưa kiểm chứng)`
+      : K.need === "choch" ? `KB4: H4 ${h4} · khung ${tf} — đứng ngoài, chờ CHoCH${h4}` : `KB4: H4 ${h4} — chờ cặp đỉnh/đáy mới`;
+    ctx.save(); ctx.font = "600 10px 'IBM Plex Mono', monospace"; ctx.textAlign = "right"; ctx.fillStyle = C.mag; ctx.fillText(txt, plotW - 6, 14); ctx.restore();
   }
   // đường nối mức H4 cũ tới nến quét, khớp TradingView
   for (const w of R.oldSweeps || []) {

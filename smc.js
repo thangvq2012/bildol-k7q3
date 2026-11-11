@@ -507,6 +507,19 @@ const SMC = (() => {
 
   // ───── KB4 chờ (hiển thị, chưa kiểm chứng): một setup mới nhất mỗi khung M5/M15, thuận nến tạo H4 gần nhất đã đóng ─────
   // Chỉ có setup khi nến tạo đáy (SELL) hoặc nến tạo đỉnh (BUY) đã đóng. Tính từ nến H4 tạo đỉnh/đáy đó trở đi.
+  // ───── H4 nhiễu (người dùng đề xuất 11/11, đo K10 — KHÔNG ĐẠT kiểm chứng, chỉ dùng để hiển thị) ─────
+  // Chỉ xét các lần đổi chiều nến tạo H4 (fm = ±1) SAU mốc chính thức H4 gần nhất (ev ≠ 0).
+  // Nhiễu khi: ≥ 3 lần đổi chiều, HOẶC hai lần đổi chiều gần nhất cách nhau ≤ 4 nến H4. Có mốc chính thức mới thì hết.
+  function h4Noise(hs) {
+    const n = hs.length, nz = new Array(n).fill(false); let F = [];
+    for (let j = 0; j < n; j++) {
+      const s = hs[j]; if (!s) continue;
+      if (s.ev !== 0) F = []; else if (s.fm === 1 || s.fm === -1) F.push(j);
+      nz[j] = F.length >= 3 || (F.length >= 2 && F[F.length - 1] - F[F.length - 2] <= 4);
+    }
+    return nz;
+  }
+
   function kb4Setup(c, ms, h4c, sec, opt = {}) {
     const n = c.length, lo = opt.oteLo ?? 0.705, hi = opt.oteHi ?? 0.79, buf = opt.slBuf ?? 3;
     let f = 0, t0 = null, j = 1, T = null, B = null, P = null, reg = 0;
@@ -517,6 +530,7 @@ const SMC = (() => {
       if (nf && nf !== f) { f = nf; t0 = k.time; }
     }
     if (!f) return null;
+    const nz = opt.kb4Noise === false ? null : h4Noise(structure(h4c));
     for (let i = 1; i < n; i++) {
       const k = c[i], m = ms[i], r = (() => { const q = closedIdx(h4c, sec, k.time); while (j <= q) { const a = h4c[j], b = h4c[j - 1], nf = a.close < b.low && a.close < a.open ? -1 : a.close > b.high && a.close > a.open ? 1 : 0; if (nf) reg = nf; j++; } return reg; })();
       if (T && m.tTop != null && m.tTopI === i && m.tTop > T.p) T = { p: m.tTop, i };
@@ -525,6 +539,7 @@ const SMC = (() => {
       if (m.fm === 1 && m.tBot != null) B = { p: m.tBot, i: m.tBotI };
       if (P && P.r !== r) P = null;
       if (P && m.trend !== P.r) P = null;   // cấu trúc khung nhỏ đổi ngược chiều H4: đứng ngoài, chờ CHoCH
+      if (nz) { const q = closedIdx(h4c, sec, k.time); if (q >= 0 && nz[q]) { P = null; continue; } } // H4 nhiễu: đứng ngoài
       if (k.time < t0 || r !== f) continue;
       if (r === -1) {
         if (P && k.close > P.a) P = null;
@@ -538,7 +553,8 @@ const SMC = (() => {
         if (P && k.close > P.b) P = null;
       }
     }
-    if (!P) return { side: f === -1 ? "SELL" : "BUY", t0, wait: true, tfTrend: ms[n - 1].trend, need: ms[n - 1].trend === f ? "pair" : "choch" };
+    const noiseNow = !!(nz && h4Upto >= 0 && nz[h4Upto]);
+    if (!P) return { side: f === -1 ? "SELL" : "BUY", t0, wait: true, tfTrend: ms[n - 1].trend, noise: noiseNow, need: noiseNow ? "noise" : ms[n - 1].trend === f ? "pair" : "choch" };
     const e1 = P.b + (P.a - P.b) * lo, e2 = P.b + (P.a - P.b) * hi;
     const stop = P.r === -1 ? P.a + buf : P.a - buf, risk = Math.abs(e1 - stop), rr = Math.abs(P.b - e1) / risk;
     let touched = false;
@@ -648,6 +664,6 @@ const SMC = (() => {
     return Math.max(d0 - Math.ceil((nBars * tfSec * 1.4) / day) * day, h4From);
   }
 
-  return { structure, liquidity, oldLevels, kb1v3, kb1v3Fill, kb4, kb4Setup, formMarks, analyze, htfAt, closedIdx, fxOpen, bucketOf, aggregate, ltfStart, nyOffset };
+  return { h4Noise, structure, liquidity, oldLevels, kb1v3, kb1v3Fill, kb4, kb4Setup, formMarks, analyze, htfAt, closedIdx, fxOpen, bucketOf, aggregate, ltfStart, nyOffset };
 })();
 if (typeof module !== "undefined") module.exports = SMC;
