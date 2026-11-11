@@ -68,6 +68,9 @@ const SMC = (() => {
       //    rồi mới đóng cửa phá (quy tắc 3.2); chưa có nhịp hồi thì giá đi tiếp chỉ là kéo dài đỉnh/đáy tạm.
       //    Cụ thể với đỉnh tạm: đã có nến tạo đỉnh (từ cây đỉnh trở đi), sau đó có nến tạo đáy, và đáy hồi (thấp nhất sau
       //    cây đỉnh) có nến tạo đáy của chính nó -> đỉnh - đáy luôn xen kẽ, đáy không bao giờ trùng cây với đỉnh.
+      // Hình thành đủ theo A.7 + làm rõ 11/11: đã có nến XÁC NHẬN (nến tạo cùng loại kế tiếp, giữa không có nến tạo ngược loại).
+      // Dùng cho việc GIỮ MỐC khi bị râu quét; phá cấu trúc vẫn đòi nhịp hồi 3.2 (pullUp/pullDn). Sửa 11/11 chiều, ca 10/11 18:00–20:30 M15.
+      const upCf = upTfI != null && lastTfI > upTfI && !(lastBfI > upTfI), dnCf = dnBfI != null && lastBfI > dnBfI && !(lastTfI > dnBfI);
       const pullUp = upTemp && upTfI != null && loUpI != null && loUpI > upI && lastBfI > upTfI && lastBfI >= loUpI;
       const pullDn = dnTemp && dnBfI != null && hiDnI != null && hiDnI > dnI && lastTfI > dnBfI && lastTfI >= hiDnI;
       if (up != null && k.close > up && (upTemp ? pullUp : loUpI != null)) {
@@ -91,9 +94,9 @@ const SMC = (() => {
       } else {
         // Đỉnh/đáy TẠM chưa hình thành đủ: giá vượt (kể cả bằng râu) -> dời mốc tới cực trị mới.
         // (dời mốc thì đáy/đỉnh hồi phải tìm lại từ SAU cây mới)
-        // Đỉnh/đáy tạm đã hình thành đủ (đã có nhịp hồi theo 3.2) thì râu vượt mà đóng cửa quay lại = NẾN QUÉT, giữ nguyên mốc.
-        if (upTemp && up != null && k.high > up && !pullUp) { up = k.high; upI = b; loUp = Infinity; loUpI = null; upTfI = tf ? b : null; }
-        if (dnTemp && dn != null && k.low < dn && !pullDn) { dn = k.low; dnI = b; hiDn = -Infinity; hiDnI = null; dnBfI = bf ? b : null; }
+        // Đỉnh/đáy tạm đã hình thành đủ (có nhịp hồi 3.2, HOẶC có nến xác nhận mà nến này chỉ râu vượt rồi đóng cửa quay lại) = NẾN QUÉT, giữ nguyên mốc.
+        if (upTemp && up != null && k.high > up && !pullUp && !(upCf && k.close <= up)) { up = k.high; upI = b; loUp = Infinity; loUpI = null; upTfI = tf ? b : null; }
+        if (dnTemp && dn != null && k.low < dn && !pullDn && !(dnCf && k.close >= dn)) { dn = k.low; dnI = b; hiDn = -Infinity; hiDnI = null; dnBfI = bf ? b : null; }
       }
       // upOk/dnOk: đỉnh/đáy tạm của nhịp hiện tại đã HÌNH THÀNH ĐỦ (nến tạo + nhịp hồi, luật 3.2/8) -> mốc cố định cho Fibo KB2
       const upOk = upTemp && up != null && upTfI != null && loUpI != null && loUpI > upI && lastBfI > upTfI && lastBfI >= loUpI;
