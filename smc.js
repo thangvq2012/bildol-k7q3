@@ -160,7 +160,13 @@ const SMC = (() => {
       return g.map((q) => ({ p: top ? q.hi : q.lo, n: q.m.length, key: q.m.map((x) => x.i).sort((a, b) => a - b).join(","), m: q.m }));
     };
     const levels = (pm, i, top) => {
-      const off = top ? offT : offB, near = top ? pm.up : pm.dn, nearI = top ? pm.upI : pm.dnI, L = [];
+      const off = top ? offT : offB, L = [];
+      let near = top ? pm.up : pm.dn, nearI = top ? pm.upI : pm.dnI;
+      // Luật B.1 "đỉnh/đáy gần nhất" tính cả đỉnh/đáy TẠM đã hình thành đủ (A.7). pm.up/pm.dn là mốc
+      // dùng để phá cấu trúc, trong xu hướng tăng nó đứng im ở đáy chính thức rất xa; đáy thật sự gần
+      // nhất là đỉnh/đáy tạm mới hơn đang nằm trong off. Mức trong off đứng một mình trước đây chỉ
+      // tham gia nhóm "2-3-4 bằng nhau", không bao giờ thành mức quét.
+      if (opt.liqTemp !== false) for (const x of off) if (nearI == null || x.i > nearI) { near = x.p; nearI = x.i; }
       const cand = near != null && !off.some((x) => x.i === nearI) ? [...off, { p: near, i: nearI }] : off;
       for (const q of groups(cand, top)) if (q.n >= 2) L.push({ p: q.p, key: (top ? "EH" : "EL") + q.key, txt: `${q.n} ${top ? "đỉnh" : "đáy"} bằng nhau ${q.p.toFixed(2)}`, n: q.n, i: Math.min(...q.m.map((x) => x.i)) });
       if (near != null && !L.some((x) => Math.abs(x.p - near) <= opt.eqTol))
