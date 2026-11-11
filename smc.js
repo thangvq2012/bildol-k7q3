@@ -189,13 +189,18 @@ const SMC = (() => {
       for (let j = offB.length - 1; j >= 0; j--) if (k.close < offB[j].p) offB.splice(j, 1);
       if (m.nTop) { offT.push({ p: m.oTop, i: m.oTopI }); if (offT.length > 8) offT.shift(); tops.push({ p: m.oTop, i: m.oTopI }); if (tops.length > 3) tops.shift(); }
       if (m.nBot) { offB.push({ p: m.oBot, i: m.oBotI }); if (offB.length > 8) offB.shift(); bots.push({ p: m.oBot, i: m.oBotI }); if (bots.length > 3) bots.shift(); }
-      // Luật A.7 (chốt 28/10, làm rõ 11/11): đỉnh/đáy TẠM đã hình thành đủ (nến tạo + nhịp hồi ngược chiều)
-      // cũng là thanh khoản loại 1. Mốc "đủ" = lúc nhịp hồi xuất hiện: khi một đỉnh tạm MỚI ra đời (fm === -1)
-      // thì đáy tạm đứng ngay trước nó đã có nhịp hồi, và ngược lại. Không đưa vào tops/bots vì trendline
-      // vẫn chỉ nối đỉnh/đáy CHÍNH THỨC (luật B.3).
+      // Luật A.7 (chốt 28/10, làm rõ 11/11): đỉnh/đáy TẠM đã hình thành đủ cũng là thanh khoản loại 1.
+      // Mốc "đủ" lấy cái nào ĐẾN TRƯỚC:
+      //   - nến xác nhận (A.2): fm === 2 cho đáy, fm === -2 cho đỉnh;
+      //   - nhịp hồi ngược chiều: một đỉnh tạm mới ra đời (fm === -1) thì đáy tạm trước nó đã đủ, và ngược lại.
+      // Chỉ lấy nhịp hồi thì trên chuỗi tăng một mạch, mức vào danh sách quá muộn và bỏ lỡ cú quét
+      // (ca đáy 4026,04 ngày 06/11 bị nến 22:00 ngày 10/11 quét, TVC 11/11).
+      // Không đưa vào tops/bots vì trendline vẫn chỉ nối đỉnh/đáy CHÍNH THỨC (luật B.3).
       if (opt.liqTemp !== false) {
-        if (m.fm === -1 && m.tBot != null && m.tBotI != null && m.tTopI != null && m.tBotI < m.tTopI && !offB.some((x) => x.i === m.tBotI)) { offB.push({ p: m.tBot, i: m.tBotI }); if (offB.length > 8) offB.shift(); }
-        if (m.fm === 1 && m.tTop != null && m.tTopI != null && m.tBotI != null && m.tTopI < m.tBotI && !offT.some((x) => x.i === m.tTopI)) { offT.push({ p: m.tTop, i: m.tTopI }); if (offT.length > 8) offT.shift(); }
+        const okB = m.fm === 2 || (m.fm === -1 && m.tTopI != null && m.tBotI != null && m.tBotI < m.tTopI);
+        const okT = m.fm === -2 || (m.fm === 1 && m.tBotI != null && m.tTopI != null && m.tTopI < m.tBotI);
+        if (okB && m.tBot != null && m.tBotI != null && !offB.some((x) => x.i === m.tBotI)) { offB.push({ p: m.tBot, i: m.tBotI }); if (offB.length > 8) offB.shift(); }
+        if (okT && m.tTop != null && m.tTopI != null && !offT.some((x) => x.i === m.tTopI)) { offT.push({ p: m.tTop, i: m.tTopI }); if (offT.length > 8) offT.shift(); }
       }
       if (i === n - 1) {
         // các mức đang còn hiệu lực cho nến KẾ TIẾP (để vẽ)
