@@ -183,6 +183,14 @@ const SMC = (() => {
       for (let j = offB.length - 1; j >= 0; j--) if (k.close < offB[j].p) offB.splice(j, 1);
       if (m.nTop) { offT.push({ p: m.oTop, i: m.oTopI }); if (offT.length > 8) offT.shift(); tops.push({ p: m.oTop, i: m.oTopI }); if (tops.length > 3) tops.shift(); }
       if (m.nBot) { offB.push({ p: m.oBot, i: m.oBotI }); if (offB.length > 8) offB.shift(); bots.push({ p: m.oBot, i: m.oBotI }); if (bots.length > 3) bots.shift(); }
+      // Luật A.7 (chốt 28/10, làm rõ 11/11): đỉnh/đáy TẠM đã hình thành đủ (nến tạo + nhịp hồi ngược chiều)
+      // cũng là thanh khoản loại 1. Mốc "đủ" = lúc nhịp hồi xuất hiện: khi một đỉnh tạm MỚI ra đời (fm === -1)
+      // thì đáy tạm đứng ngay trước nó đã có nhịp hồi, và ngược lại. Không đưa vào tops/bots vì trendline
+      // vẫn chỉ nối đỉnh/đáy CHÍNH THỨC (luật B.3).
+      if (opt.liqTemp !== false) {
+        if (m.fm === -1 && m.tBot != null && m.tBotI != null && m.tTopI != null && m.tBotI < m.tTopI && !offB.some((x) => x.i === m.tBotI)) { offB.push({ p: m.tBot, i: m.tBotI }); if (offB.length > 8) offB.shift(); }
+        if (m.fm === 1 && m.tTop != null && m.tTopI != null && m.tBotI != null && m.tTopI < m.tBotI && !offT.some((x) => x.i === m.tTopI)) { offT.push({ p: m.tTop, i: m.tTopI }); if (offT.length > 8) offT.shift(); }
+      }
       if (i === n - 1) {
         // các mức đang còn hiệu lực cho nến KẾ TIẾP (để vẽ)
         const nx = levels(m, i + 1, true).filter((L) => !taken.has(L.key)), ny = levels(m, i + 1, false).filter((L) => !taken.has(L.key));

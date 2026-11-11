@@ -396,7 +396,7 @@ function drawOverlay() {
       hline(ctx, y, 0, plotW, lc, isCW || isPW ? 1.6 : 1, isCW || isPW ? [] : [4, 4], isCW || isPW ? 0.95 : 0.25 + 0.6 * share);
       if (labelSet.has(s.strike) || isCW || isPW) {
         const d = s.d_oi != null ? ` ${s.d_oi >= 0 ? "+" : ""}${fmtK(s.d_oi)}` : "";
-        const txt = `${src} ${s.strike} · ${Math.round(share * 100)}%${isCW ? " CW" : isPW ? " PW" : ""}${d}`;
+        const txt = `${src} ${s.strike} → ${fmt(s.chart)} · ${Math.round(share * 100)}%${isCW ? " CW" : isPW ? " PW" : ""}${d}`;
         tagBox(ctx, side === "left" ? 6 : plotW - 6, y, txt, lc, side, isCW || isPW);
       }
     }
@@ -535,12 +535,6 @@ function drawSMC(ctx, plotW, plotH) {
   if (R.kb4 && R.kb4.hi != null) {
     const K = R.kb4, sell = K.side === "SELL";
     box(K.aT, K.lo, K.hi, sell ? "rgba(229,83,75,.16)" : "rgba(38,179,132,.16)", sell ? "rgba(229,83,75,.9)" : "rgba(38,179,132,.9)", `KB4 chờ ${K.side} · OTE ${f(K.lo)}–${f(K.hi)} · SL ${f(K.sl)} · TP ${f(K.tp)}${K.touched ? " · đã chạm" : ""}`, "top");
-  } else if (R.kb4 && R.kb4.need === "choch") {
-    // cấu trúc khung nhỏ ngược chiều nến tạo H4: đứng ngoài, chờ CHoCH
-    const K = R.kb4, d = K.side === "SELL" ? "▼" : "▲", t = K.tfTrend === 1 ? "▲" : K.tfTrend === -1 ? "▼" : "—";
-    ctx.save(); ctx.fillStyle = "rgba(160,170,185,.95)"; ctx.font = "11px system-ui,sans-serif"; ctx.textAlign = "right";
-    ctx.fillText(`KB4: H4 ${d} · ${tfN} ${t} — đứng ngoài, chờ CHoCH${d}`, plotW - 6, 14);
-    ctx.restore();
   }
   // đường nối mức H4 cũ tới nến quét, khớp TradingView
   for (const w of R.oldSweeps || []) {
