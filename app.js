@@ -540,14 +540,14 @@ function drawSMC(ctx, plotW, plotH) {
     const K = R.kb4, h4 = K.side === "SELL" ? "▼" : "▲", tf = K.tfTrend === 1 ? "▲" : K.tfTrend === -1 ? "▼" : "—";
     const txt = K.need === "noise" ? `KB4: H4 ${h4} nhiễu — đứng ngoài, chờ mốc chính thức H4 (chưa kiểm chứng)`
       : K.need === "choch" ? `KB4: H4 ${h4} · khung ${tf} — đứng ngoài, chờ CHoCH${h4}` : `KB4: H4 ${h4} — chờ cặp đỉnh/đáy mới`;
-    ctx.save(); ctx.font = "600 10px 'IBM Plex Mono', monospace"; ctx.textAlign = "right"; ctx.fillStyle = C.mag; ctx.fillText(txt, plotW - 6, 14); ctx.restore();
+    ctx.save(); ctx.font = "600 10px 'IBM Plex Mono', monospace"; ctx.textAlign = "right"; ctx.fillStyle = C.mag; ctx.textBaseline = "bottom"; ctx.fillText(txt, plotW - 6, plotH - 6); ctx.restore();
   }
   // KB8 (chưa kiểm chứng): vùng OTE hợp lưu VAH/FVG — chỉ khung M15
   if (R.kb8) {
     const K = R.kb8, vp = S.state?.volume_profile, vOk = vp && vp.vah != null && vp.vah >= K.lo && vp.vah <= K.hi;
     const lv = vOk && K.fvg ? "K11" : vOk || K.fvg ? "K12" : "chưa hợp lưu";
-    const T = K.trade, st = T ? `ĐÃ KÍCH HOẠT ${f(T.entry)} · SL ${f(T.sl)} · TP ${f(T.tp)} (${T.rr.toFixed(1)}R)` : K.done ? "nến tạo không đủ 1R" : `chờ nến tạo ${K.side === "SELL" ? "đỉnh" : "đáy"}`;
-    box(K.t0, K.lo, K.hi, "rgba(224,168,58,.14)", "rgba(224,168,58,.95)", `KB8 ${K.side} hồi · OTE ${f(K.lo)}–${f(K.hi)} · VAH ${vOk ? "✓" : "✗"} · FVG ${K.fvg ? "✓" : "✗"} · ${lv} · ${st} · chưa kiểm chứng`, K.side === "SELL" ? "top" : "bottom");
+    const T = K.trade, st = T ? `vào ${f(T.entry)} SL ${f(T.sl)} TP ${f(T.tp)}` : K.done ? "nến tạo <1R, bỏ" : `chờ nến tạo ${K.side === "SELL" ? "đỉnh" : "đáy"}`;
+    box(K.t0, K.lo, K.hi, "rgba(224,168,58,.14)", "rgba(224,168,58,.95)", `KB8 ${K.side} ${lv} (VAH${vOk ? "✓" : "✗"} FVG${K.fvg ? "✓" : "✗"}) · ${st} · chưa KC`, K.side === "SELL" ? "top" : "bottom");
   }
   // đường nối mức H4 cũ tới nến quét, khớp TradingView
   for (const w of R.oldSweeps || []) {
