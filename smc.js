@@ -520,6 +520,46 @@ const SMC = (() => {
     return nz;
   }
 
+  // ───── KB8 (11/11, CHƯA KIỂM CHỨNG, chỉ hiển thị) — luật ở bildol-dang-ky-kb8.md ─────
+  // Pha giảm: CHoCH▼ → CHoCH▲. A = LH đầu tiên (BOS▼ đầu tiên), B = Low thấp nhất của pha. Tại CHoCH▲ kích hoạt vùng OTE A→B chờ SELL.
+  // Lệnh: nến tạo đỉnh (fm = -1) có đỉnh tạm trong [0,705; A) và đóng < 0,79. SL đỉnh tạm + slBuf, TP = B (tối đa 3R, dưới 1R bỏ).
+  // Hủy: đóng vượt A, CHoCH▼ mới, hoặc quá 96 nến mà chưa kích hoạt. BUY đối xứng. Hợp lưu VAH do app.js đánh giá (cần volume profile).
+  function kb8Setup(c, ms, opt = {}) {
+    const lo = opt.oteLo ?? 0.705, hi = opt.oteHi ?? 0.79, buf = opt.slBuf ?? 3, n = c.length;
+    let pd = 0, pA = null, pAI = null, pB = null, gaps = [], L = null;
+    for (let i = 2; i < n; i++) {
+      const k = c[i], m = ms[i];
+      if (L) {
+        const z1 = L.B + (L.A - L.B) * lo, z2 = L.B + (L.A - L.B) * hi;
+        if ((L.d === -1 && k.close > L.A) || (L.d === 1 && k.close < L.A) || (!L.done && i - L.i0 > 96)) { L.dead = i; L = null; }
+        else if (!L.done) {
+          if (L.d === -1 && m.fm === -1 && m.tTop != null && m.tTop >= z1 && m.tTop < L.A && k.close < z2) {
+            const rk = m.tTop + buf - k.close, rr = rk > 0 ? (k.close - L.B) / rk : 0; L.done = true;
+            if (rr >= 1) L.trade = { i, t: k.time, entry: k.close, sl: m.tTop + buf, tp: rr > 3 ? k.close - 3 * rk : L.B, rr: Math.min(3, rr) };
+          }
+          if (L.d === 1 && m.fm === 1 && m.tBot != null && m.tBot <= z1 && m.tBot > L.A && k.close > z2) {
+            const rk = k.close - (m.tBot - buf), rr = rk > 0 ? (L.B - k.close) / rk : 0; L.done = true;
+            if (rr >= 1) L.trade = { i, t: k.time, entry: k.close, sl: m.tBot - buf, tp: rr > 3 ? k.close + 3 * rk : L.B, rr: Math.min(3, rr) };
+          }
+        }
+      }
+      if (m.ev === 2 || m.ev === -2) {
+        if (m.ev === 2 && pd === -1 && pA != null) L = { d: -1, A: pA, AI: pAI, B: Math.min(pB, k.low), i0: i, t0: k.time, done: false, gaps: gaps.slice() };
+        else if (m.ev === -2 && pd === 1 && pA != null) L = { d: 1, A: pA, AI: pAI, B: Math.max(pB, k.high), i0: i, t0: k.time, done: false, gaps: gaps.slice() };
+        else if (L && ((m.ev === -2 && L.d === -1) || (m.ev === 2 && L.d === 1))) L = null;
+        pd = m.ev > 0 ? 1 : -1; pA = null; pAI = null; pB = m.ev > 0 ? k.high : k.low; gaps = [];
+      } else if (pd === -1) { pB = Math.min(pB, k.low); if (m.ev === -1 && m.nTop && pA == null) { pA = m.oTop; pAI = m.oTopI; } }
+      else if (pd === 1) { pB = Math.max(pB, k.high); if (m.ev === 1 && m.nBot && pA == null) { pA = m.oBot; pAI = m.oBotI; } }
+      if (pd === -1 && k.high < c[i - 2].low) gaps.push({ lo: k.high, hi: c[i - 2].low, i });
+      if (pd === 1 && k.low > c[i - 2].high) gaps.push({ lo: c[i - 2].high, hi: k.low, i });
+      if (gaps.length > 30) gaps.shift();
+    }
+    if (!L) return null;
+    const z1 = L.B + (L.A - L.B) * lo, z2 = L.B + (L.A - L.B) * hi, zLo = Math.min(z1, z2), zHi = Math.max(z1, z2);
+    const fvg = L.gaps.some((g) => g.lo <= zHi && g.hi >= zLo);
+    return { side: L.d === -1 ? "SELL" : "BUY", A: L.A, aT: L.AI != null && c[L.AI] ? c[L.AI].time : L.t0, B: L.B, t0: L.t0, lo: zLo, hi: zHi, fvg, done: L.done, trade: L.trade || null };
+  }
+
   function kb4Setup(c, ms, h4c, sec, opt = {}) {
     const n = c.length, lo = opt.oteLo ?? 0.705, hi = opt.oteHi ?? 0.79, buf = opt.slBuf ?? 3;
     let f = 0, t0 = null, j = 1, T = null, B = null, P = null, reg = 0;
@@ -591,6 +631,7 @@ const SMC = (() => {
       if (L.sw[i]) { if (L.sw[i].bear) res.sweeps.push({ i, side: "top", txt: L.sw[i].bear.join(" + ") }); if (L.sw[i].bull) res.sweeps.push({ i, side: "bot", txt: L.sw[i].bull.join(" + ") }); }
     }
     if (opt.tfSec === 300 || opt.tfSec === 900) res.kb4 = kb4Setup(c, ms, h4c, sec, opt);
+    if (opt.tfSec === 900) res.kb8 = kb8Setup(c, ms, opt);
     res.ms = ms; res.liqH = L.liqH; res.liqL = L.liqL; res.tl = L.tl; res.forms = formMarks(c, ms);
     // chỉ hiển thị: nến quét mức H4 cũ khi đang xem H4 (không tạo lệnh)
     if (sec === opt.tfSec) {
@@ -664,6 +705,6 @@ const SMC = (() => {
     return Math.max(d0 - Math.ceil((nBars * tfSec * 1.4) / day) * day, h4From);
   }
 
-  return { h4Noise, structure, liquidity, oldLevels, kb1v3, kb1v3Fill, kb4, kb4Setup, formMarks, analyze, htfAt, closedIdx, fxOpen, bucketOf, aggregate, ltfStart, nyOffset };
+  return { kb8Setup, h4Noise, structure, liquidity, oldLevels, kb1v3, kb1v3Fill, kb4, kb4Setup, formMarks, analyze, htfAt, closedIdx, fxOpen, bucketOf, aggregate, ltfStart, nyOffset };
 })();
 if (typeof module !== "undefined") module.exports = SMC;
