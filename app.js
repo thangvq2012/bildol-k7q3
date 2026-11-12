@@ -9,7 +9,7 @@ const $ = (s) => document.querySelector(s);
 const LC = window.LightweightCharts;
 const TZ = 7 * 3600; // trục thời gian theo giờ Việt Nam
 const TF_SEC = { "1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400, "1d": 86400 };
-const C = { gc: "#e0a83a", gld: "#a78bfa", up: "#26b384", down: "#e5534b", vp: "#6b8aa8", muted: "#85909c", fg: "#e4e1d9", flip: "#c4b5fd", mag: "#f2b84b", bg: "#0b0e12" };
+const C = { gc: "#e0a83a", gld: "#a78bfa", up: "#26b384", down: "#e5534b", vp: "#8fc1ec", muted: "#85909c", fg: "#e4e1d9", flip: "#c4b5fd", mag: "#f2b84b", bg: "#0b0e12" };
 const PAPER_KEY = "bildol.paper.v1";
 // Bản web tĩnh (GitHub Pages / điện thoại): đọc file JSON do máy đẩy lên thay cho API của engine; không gửi gì về máy.
 const STATIC = !!window.BILDOL_STATIC;
@@ -354,14 +354,14 @@ function initOverlay() {
 }
 
 function tagBox(ctx, x, y, text, color, align, strong) {
-  ctx.font = `${strong ? 600 : 500} 10.5px "IBM Plex Mono", monospace`;
-  const w = ctx.measureText(text).width + 10, h = 15, x0 = align === "right" ? x - w : x;
-  ctx.fillStyle = strong ? color : "rgba(11,14,18,.88)";
+  ctx.font = `${strong ? 700 : 600} 12.5px "IBM Plex Mono", monospace`;
+  const w = ctx.measureText(text).width + 12, h = 19, x0 = align === "right" ? x - w : x;
+  ctx.fillStyle = strong ? color : "rgba(11,14,18,.94)";
   ctx.strokeStyle = color; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x0, y - h / 2, w, h, 3) : ctx.rect(x0, y - h / 2, w, h); ctx.fill(); ctx.stroke();
   ctx.fillStyle = strong ? "#0b0e12" : color;
   ctx.textBaseline = "middle"; ctx.textAlign = "left";
-  ctx.fillText(text, x0 + 5, y + 0.5);
+  ctx.fillText(text, x0 + 6, y + 0.5);
 }
 
 function hline(ctx, y, x0, x1, color, width, dash, alpha) {
@@ -411,7 +411,7 @@ function drawOverlay() {
     const yM = c.magnet != null ? Y(c.magnet) : null;
     if (yM != null) tagBox(ctx, plotW * 0.5, yM, `◎ MAGNET ${fmt(c.magnet)}`, C.mag, "left", true);
     const yP = c.max_pain != null ? Y(c.max_pain) : null;
-    if (yP != null) { hline(ctx, yP, 0, plotW, "#9aa3ad", 1, [2, 3], 0.6); tagBox(ctx, plotW * 0.5 + 150, yP, `MaxPain ${fmt(c.max_pain)}`, "#9aa3ad", "left", false); }
+    if (yP != null) { hline(ctx, yP, 0, plotW, "#9aa3ad", 1, [2, 3], 0.6); tagBox(ctx, plotW * 0.5 + 190, yP, `MaxPain ${fmt(c.max_pain)}`, "#c3cbd4", "left", false); }
   }
 
   // Volume profile phiên
@@ -420,8 +420,7 @@ function drawOverlay() {
     for (const [k, lab] of [["poc", "POC"], ["vah", "VAH"], ["val", "VAL"]]) {
       const y = Y(vp[k]); if (y == null) continue;
       hline(ctx, y, 0, plotW, C.vp, k === "poc" ? 1.5 : 1, k === "poc" ? [] : [3, 3], 0.8);
-      ctx.fillStyle = C.vp; ctx.font = "10px 'IBM Plex Mono', monospace"; ctx.textAlign = "left"; ctx.textBaseline = "bottom";
-      ctx.fillText(`${lab} ${fmt(vp[k])}`, 6, y - 2);
+      tagBox(ctx, 6, y - 11, `${lab} ${fmt(vp[k])}`, C.vp, "left", false);
     }
   }
 
@@ -443,7 +442,7 @@ function drawOverlay() {
       ctx.strokeStyle = C.mag; ctx.lineWidth = 1.6; ctx.setLineDash([]);
       ctx.beginPath(); pts.forEach((p, i) => { const x = cx + (p.s.net_gex / gmax) * half; i ? ctx.lineTo(x, p.y) : ctx.moveTo(x, p.y); }); ctx.stroke();
       const top = [...pts].sort((a, b) => Math.abs(b.s.net_gex) - Math.abs(a.s.net_gex)).slice(0, 6);
-      ctx.font = "10px 'IBM Plex Mono', monospace"; ctx.textBaseline = "middle";
+      ctx.font = "700 12px 'IBM Plex Mono', monospace"; ctx.textBaseline = "middle";
       for (const p of top) {
         if (p.y < 4 || p.y > plotH - 4) continue;
         const g = p.s.net_gex, x = cx + (g / gmax) * half;
@@ -482,7 +481,7 @@ function drawSMC(ctx, plotW, plotH) {
     ctx.fillStyle = fill; ctx.fillRect(x0, top, plotW - x0, hh);
     ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.setLineDash([]); ctx.strokeRect(x0 + 0.5, top + 0.5, plotW - x0 - 1, hh - 1);
     if (label) {
-      ctx.font = "600 10px 'IBM Plex Mono', monospace"; ctx.fillStyle = stroke; ctx.textAlign = "right";
+      ctx.font = "700 11.5px 'IBM Plex Mono', monospace"; ctx.fillStyle = stroke; ctx.textAlign = "right";
       ctx.textBaseline = where === "top" ? "top" : "bottom";
       const ly = where === "top" ? Math.max(top + 2, 2) : Math.min(top + hh - 2, plotH - 2);
       ctx.fillText(label, plotW - 6, ly);
@@ -499,7 +498,7 @@ function drawSMC(ctx, plotW, plotH) {
       box(fr.hiT, o2, o1, "rgba(38,179,132,.09)", "rgba(38,179,132,.7)", `H4 DISCOUNT · OTE ${f(o1)}–${f(o2)} (CL2 Buy thuận)`, "top");
       box(fr.hiT, o1, fr.lo, "rgba(38,179,132,.17)", "rgba(38,179,132,.7)", `H4 EXTREME → ${f(fr.lo)}`, "bottom");
     }
-    const y5 = Yr(fr.fib05); if (y5 != null && y5 > 0 && y5 < plotH) { hline(ctx, y5, X(fr.hiT), plotW, "#9aa3ad", 1, [5, 4], 0.7); ctx.fillStyle = "#9aa3ad"; ctx.font = "10px 'IBM Plex Mono', monospace"; ctx.textAlign = "right"; ctx.textBaseline = "bottom"; ctx.fillText(`H4 Fibo 0.5 · ${f(fr.fib05)}`, plotW - 6, y5 - 2); }
+    const y5 = Yr(fr.fib05); if (y5 != null && y5 > 0 && y5 < plotH) { hline(ctx, y5, X(fr.hiT), plotW, "#9aa3ad", 1, [5, 4], 0.7); ctx.fillStyle = "#c3cbd4"; ctx.font = "700 11.5px 'IBM Plex Mono', monospace"; ctx.textAlign = "right"; ctx.textBaseline = "bottom"; ctx.fillText(`H4 Fibo 0.5 · ${f(fr.fib05)}`, plotW - 6, y5 - 2); }
     // vùng chờ KB2 trên khung chart (CL1 hồi / CL2 thuận)
     for (const [zz, cl] of [[fr.z1, 1], [fr.z2, 2]]) {
       if (!zz || !c[zz.from]) continue;
@@ -509,7 +508,7 @@ function drawSMC(ctx, plotW, plotH) {
     }
   }
   // lệnh chờ / đang chạy: Entry, SL, TP1
-  ctx.font = "600 10px 'IBM Plex Mono', monospace"; ctx.textBaseline = "middle";
+  ctx.font = "700 12px 'IBM Plex Mono', monospace"; ctx.textBaseline = "middle";
   for (const o of smcOrders()) {
     if (o.status !== "pending" && o.status !== "open") continue;
     const x0 = c[o.created] ? X(c[o.created].time) : 0, col = o.side === "BUY" ? C.up : C.down;
@@ -520,7 +519,7 @@ function drawSMC(ctx, plotW, plotH) {
     }
   }
   // thanh khoản đang chờ
-  ctx.font = "10px 'IBM Plex Mono', monospace"; ctx.textBaseline = "middle"; ctx.textAlign = "right";
+  ctx.font = "700 11.5px 'IBM Plex Mono', monospace"; ctx.textBaseline = "middle"; ctx.textAlign = "right";
   const p0 = lastPrice();
   for (const [arr, kind] of [[R.liqH, "đỉnh"], [R.liqL, "đáy"]]) {
     // chỉ vẽ 4 vùng gần giá nhất mỗi phía cho gọn (EQH/EQL luôn vẽ)
@@ -564,7 +563,7 @@ function drawSMC(ctx, plotW, plotH) {
     }
   }
   // HH/HL/LH/LL và BOS/CHoCH (30 mốc gần nhất)
-  ctx.font = "600 9.5px 'IBM Plex Mono', monospace"; ctx.textAlign = "center";
+  ctx.font = "700 11px 'IBM Plex Mono', monospace"; ctx.textAlign = "center";
   for (const e of R.events.slice(-40)) {
     if (!c[e.i]) continue;
     const x = ts.timeToCoordinate(c[e.i].time + TZ); if (x == null || x < 0 || x > plotW) continue;
