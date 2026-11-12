@@ -10,7 +10,9 @@
 
 const SMC = (() => {
   // ───── cấu trúc một khung: trả về trạng thái sau MỖI nến ─────
-  function structure(c) {
+  function structure(c, eqTol = 1.5) {
+    // A.7 bổ sung 12/11: mốc tạm chưa hình thành đủ mà râu chỉ vượt ≤ eqTol rồi đóng cửa quay lại -> coi là bằng nhau, giữ mốc.
+    const EQ = eqTol;
     const n = c.length, out = new Array(n);
     if (!n) return out;
     // cực trị trong đoạn [b0, b]; đoạn rỗng (b0 > b) -> [±Infinity, null]
@@ -95,8 +97,8 @@ const SMC = (() => {
         // Đỉnh/đáy TẠM chưa hình thành đủ: giá vượt (kể cả bằng râu) -> dời mốc tới cực trị mới.
         // (dời mốc thì đáy/đỉnh hồi phải tìm lại từ SAU cây mới)
         // Đỉnh/đáy tạm đã hình thành đủ (có nhịp hồi 3.2, HOẶC có nến xác nhận mà nến này chỉ râu vượt rồi đóng cửa quay lại) = NẾN QUÉT, giữ nguyên mốc.
-        if (upTemp && up != null && k.high > up && !pullUp && !(upCf && k.close <= up)) { up = k.high; upI = b; loUp = Infinity; loUpI = null; upTfI = tf ? b : null; }
-        if (dnTemp && dn != null && k.low < dn && !pullDn && !(dnCf && k.close >= dn)) { dn = k.low; dnI = b; hiDn = -Infinity; hiDnI = null; dnBfI = bf ? b : null; }
+        if (upTemp && up != null && k.high > up && !pullUp && !(upCf && k.close <= up) && !(k.high - up <= EQ && k.close <= up)) { up = k.high; upI = b; loUp = Infinity; loUpI = null; upTfI = tf ? b : null; }
+        if (dnTemp && dn != null && k.low < dn && !pullDn && !(dnCf && k.close >= dn) && !(dn - k.low <= EQ && k.close >= dn)) { dn = k.low; dnI = b; hiDn = -Infinity; hiDnI = null; dnBfI = bf ? b : null; }
       }
       // upOk/dnOk: đỉnh/đáy tạm của nhịp hiện tại đã HÌNH THÀNH ĐỦ (nến tạo + nhịp hồi, luật 3.2/8) -> mốc cố định cho Fibo KB2
       const upOk = upTemp && up != null && upTfI != null && loUpI != null && loUpI > upI && lastBfI > upTfI && lastBfI >= loUpI;
