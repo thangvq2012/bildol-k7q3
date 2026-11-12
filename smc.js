@@ -339,6 +339,8 @@ const SMC = (() => {
       return { ok: run >= mult * a, run: run / a };
     };
     // Xử lý một nến H4 vừa đóng (j) tại nến chart i
+    // 12/11: hướng nến tạo H4 gần nhất (+1 đáy, -1 đỉnh). KB2 chỉ dùng đáy/đỉnh tạm H4 khi nến tạo gần nhất cùng loại.
+    const h4Lf = []; { let f = 0; for (let j = 0; j < h4s.length; j++) { const fm = h4s[j] && h4s[j].fm; if (fm === 1 || fm === -1) f = fm; h4Lf[j] = f; } }
     const onH4 = (j, i) => {
       const s = h4s[j], p = h4s[j - 1];
       if (!s || !p || s.trend !== -1) return;
@@ -407,7 +409,7 @@ const SMC = (() => {
       const h = hk >= 0 ? h4s[hk] : null;
       if (!h || h.trend !== -1) { fin = { h4: hk, active: false }; continue; }
       const hi = h.oTop, lo = h.extLo, r = hi - lo, fib = (x) => lo + r * x;
-      const h4Bot = h.tBot != null, h4TopAgain = h.tTop != null && h.tTop >= fib(0.5);
+      const h4Bot = h.tBot != null && h4Lf[hk] === 1, h4TopAgain = h.tTop != null && h.tTop >= fib(0.5) && h4Lf[hk] === -1;
       const tB = h4Bot ? h4c[h.tBotI].time : null, tT = h.tTop != null ? h4c[h.tTopI].time : null;
       const rev1 = h4Bot && m.trend === 1 && chUpT != null && chUpT >= tB;
       const rev2 = h4TopAgain && m.trend === -1 && chDnT != null && chDnT >= tT;
