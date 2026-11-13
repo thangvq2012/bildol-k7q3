@@ -533,7 +533,11 @@ function drawSMC(ctx, plotW, plotH) {
   // KB4 chờ: chỉ setup mới nhất của khung đang xem
   if (R.kb4 && R.kb4.hi != null) {
     const K = R.kb4, sell = K.side === "SELL";
-    box(K.aT, K.lo, K.hi, sell ? "rgba(229,83,75,.16)" : "rgba(38,179,132,.16)", sell ? "rgba(229,83,75,.9)" : "rgba(38,179,132,.9)", `KB4 chờ ${K.side} · OTE ${f(K.lo)}–${f(K.hi)} · SL ${f(K.sl)} · TP ${f(K.tp)}${K.touched ? " · đã chạm" : ""}`, "top");
+    const kc = sell ? "229,83,75" : "38,179,132";
+    // vùng Extreme (mép sâu OTE → đỉnh/đáy cực trị): đóng cửa vượt Extreme thì setup hết, cấu trúc tiếp diễn
+    box(K.aT, K.exLo, K.exHi, `rgba(${kc},.08)`, `rgba(${kc},.6)`, `KB4 chờ ${K.side} · EXTREME ${f(K.exLo)}–${f(K.exHi)} · SL ${f(K.sl)} · TP ${f(K.tp)}`, sell ? "top" : "bottom");
+    // vùng OTE: đóng cửa vượt OTE thì bỏ vùng này (còn Extreme)
+    if (K.oteOn) box(K.aT, K.lo, K.hi, `rgba(${kc},.16)`, `rgba(${kc},.9)`, `KB4 chờ ${K.side} · OTE ${f(K.lo)}–${f(K.hi)} · SL ${f(K.sl)} · TP ${f(K.tp)}${K.touched ? " · đã chạm" : ""}`, "top");
   } else if (R.kb4 && R.kb4.wait) {
     // KB4 đứng ngoài: H4 nhiễu (chưa kiểm chứng) hoặc cấu trúc khung nhỏ ngược chiều H4 (luật 09/11)
     const K = R.kb4, h4 = K.side === "SELL" ? "▼" : "▲", tf = K.tfTrend === 1 ? "▲" : K.tfTrend === -1 ? "▼" : "—";

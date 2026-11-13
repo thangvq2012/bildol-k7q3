@@ -587,16 +587,16 @@ const SMC = (() => {
       if (k.time < t0 || r !== f) continue;
       if (r === -1) {
         if (P && k.close > P.a) P = null;
-        if (m.fm === 1 && m.tBot != null && T && m.tBotI > T.i && m.trend === -1) P = { r, a: T.p, aI: T.i, b: m.tBot, bI: m.tBotI, at: i };
-        else if (P && m.tBot != null && m.tBotI === i && m.tBot < P.b) { P.b = m.tBot; P.bI = i; }
+        if (m.fm === 1 && m.tBot != null && T && m.tBotI > T.i && m.trend === -1) P = { r, a: T.p, aI: T.i, b: m.tBot, bI: m.tBotI, at: i, ote: true };
+        else if (P && m.tBot != null && m.tBotI === i && m.tBot < P.b) { P.b = m.tBot; P.bI = i; P.ote = true; }
         if (P && k.close < P.b) P = null; // đã về TP hoặc thủng đáy nhịp: chờ nến tạo đáy mới
-        if (P && k.close > P.b + (P.a - P.b) * Math.max(lo, hi)) P = null; // 13/11: nến đóng cửa vượt ngoài vùng Fibo OTE: xóa setup chờ
+        if (P && P.ote && k.close > P.b + (P.a - P.b) * Math.max(lo, hi)) P.ote = false; // 13/11: đóng cửa vượt OTE: bỏ vùng OTE, còn vùng Extreme
       } else {
         if (P && k.close < P.a) P = null;
-        if (m.fm === -1 && m.tTop != null && B && m.tTopI > B.i && m.trend === 1) P = { r, a: B.p, aI: B.i, b: m.tTop, bI: m.tTopI, at: i };
-        else if (P && m.tTop != null && m.tTopI === i && m.tTop > P.b) { P.b = m.tTop; P.bI = i; }
+        if (m.fm === -1 && m.tTop != null && B && m.tTopI > B.i && m.trend === 1) P = { r, a: B.p, aI: B.i, b: m.tTop, bI: m.tTopI, at: i, ote: true };
+        else if (P && m.tTop != null && m.tTopI === i && m.tTop > P.b) { P.b = m.tTop; P.bI = i; P.ote = true; }
         if (P && k.close > P.b) P = null;
-        if (P && k.close < P.b + (P.a - P.b) * Math.max(lo, hi)) P = null; // 13/11: nến đóng cửa vượt ngoài vùng Fibo OTE: xóa setup chờ
+        if (P && P.ote && k.close < P.b + (P.a - P.b) * Math.max(lo, hi)) P.ote = false; // 13/11: đóng cửa vượt OTE: bỏ vùng OTE, còn vùng Extreme
       }
     }
     const noiseNow = !!(nz && h4Upto >= 0 && nz[h4Upto]);
@@ -605,7 +605,7 @@ const SMC = (() => {
     const stop = P.r === -1 ? P.a + buf : P.a - buf, risk = Math.abs(e1 - stop), rr = Math.abs(P.b - e1) / risk;
     let touched = false;
     for (let i = P.at + 1; i < n; i++) if (P.r === -1 ? c[i].high >= e1 : c[i].low <= e1) touched = true;
-    return { side: P.r === -1 ? "SELL" : "BUY", t0, a: P.a, b: P.b, aT: c[P.aI].time, bT: c[P.bI].time, lo: Math.min(e1, e2), hi: Math.max(e1, e2), entry: e1, sl: stop, tp: P.b, rr, touched };
+    return { side: P.r === -1 ? "SELL" : "BUY", t0, a: P.a, b: P.b, aT: c[P.aI].time, bT: c[P.bI].time, lo: Math.min(e1, e2), hi: Math.max(e1, e2), oteOn: P.ote, exLo: P.r === -1 ? Math.max(e1, e2) : P.a, exHi: P.r === -1 ? P.a : Math.min(e1, e2), entry: e1, sl: stop, tp: P.b, rr, touched };
   }
 
   // ───── phân tích đầy đủ: khung chart + H4, cả hai chiều ─────
