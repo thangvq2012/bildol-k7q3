@@ -598,19 +598,31 @@ const SMC = (() => {
       }
     }
     let hv = -Infinity, hI = oi; for (let q = oi; q < n; q++) { const v = sg === 1 ? c[q].high : -c[q].low; if (v > hv) { hv = v; hI = q; } }
-    const out = [], seen = new Set();
-    const all = hI > oi ? [{ a: sg * ob, aI: oi, b: hv, bI: hI }, ...legs.slice().reverse()] : legs.slice().reverse();
-    for (const g of all) {
-      const key = g.aI + ":" + g.bI; if (seen.has(key)) continue; seen.add(key);
-      if (hI > oi && g.aI === oi && g !== all[0]) continue; // OF cùng đáy gốc với OF lớn (đáy thấp nhất→đỉnh cao nhất sau ROF) được nối vào OF lớn
-      const sz = g.b - g.a; if (!(sz >= 2 * atr)) continue;
-      let ok = true; for (let q = g.bI + 1; q < n; q++) { const cl = sg * c[q].close; if (cl < g.a) { ok = false; break; } } /* 13/11 (theo ví dụ của chủ + video ROF): OF chỉ hết hiệu lực khi đóng cửa dưới đáy gốc; mitigation ≥50% không giết OF */
-      if (!ok) continue;
-      const ra = sg * g.a, rb = sg * g.b;
+    const out = [];
+    // 13/11 (luật OF của chủ, kèm video ROF): mỗi đáy ứng viên (đáy gốc + các đáy tạm thời) chạy theo thời gian:
+    //  • đóng cửa dưới đáy → OF hết hiệu lực (bỏ); • pull về ≥50% Fibo (đóng cửa) rồi giá vượt đỉnh OF → đã khai thác đủ (ROF), bỏ;
+    //  • vượt đỉnh khi chưa pull ≥50% → đỉnh OF dời lên (đo từ đáy tới đỉnh cao nhất); • còn lại: OF chưa khai thác đủ → giữ, vẽ OTE+EXT.
+    //  Đỉnh phải là đỉnh cao hơn các đỉnh trước đó trong pha (OF của cấu trúc, không phải nhịp hồi lower-high).
+    const cand = [{ a: sg * ob, aI: oi }]; for (const g of legs) cand.push({ a: g.a, aI: g.aI });
+    const seenA = new Set();
+    for (let ci = cand.length - 1; ci >= 0; ci--) {
+      const g = cand[ci]; if (seenA.has(g.aI)) continue; seenA.add(g.aI);
+      let T = g.a, TI = g.aI, pulled = false, dead = false, exh = false;
+      for (let q = g.aI + 1; q < n; q++) {
+        const cl = sg * c[q].close, hq = sg === 1 ? c[q].high : -c[q].low;
+        if (cl < g.a) { dead = true; break; }
+        if (hq > T) { if (pulled) { exh = true; break; } T = hq; TI = q; }
+        else if (!pulled && T > g.a && cl <= T - 0.5 * (T - g.a)) pulled = true;
+      }
+      if (dead || exh || TI === g.aI) continue;
+      let pk = -Infinity; for (let q = oi; q < g.aI; q++) { const v = sg === 1 ? c[q].high : -c[q].low; if (v > pk) pk = v; }
+      if (g.aI > oi && !(T > pk)) continue;
+      const sz = T - g.a; if (!(sz >= 2 * atr)) continue;
+      const ra = sg * g.a, rb = sg * T;
       if (cur && cur.a != null && Math.abs(ra - cur.a) < 0.05 && Math.abs(rb - cur.b) < 0.05) continue;
-      const e1 = sg * (g.b - sz * lo), e2 = sg * (g.b - sz * hi), ol = Math.min(e1, e2), oh = Math.max(e1, e2);
-      out.push({ side: sg === 1 ? "BUY" : "SELL", a: ra, b: rb, aT: c[g.aI].time, bT: c[g.bI].time, lo: ol, hi: oh, exLo: sg === 1 ? ra : oh, exHi: sg === 1 ? ol : ra });
-      if (out.length >= 4) break;
+      const e1 = sg * (T - sz * lo), e2 = sg * (T - sz * hi), ol = Math.min(e1, e2), oh = Math.max(e1, e2);
+      out.push({ side: sg === 1 ? "BUY" : "SELL", a: ra, b: rb, aT: c[g.aI].time, bT: c[TI].time, lo: ol, hi: oh, exLo: sg === 1 ? ra : oh, exHi: sg === 1 ? ol : ra, pulled });
+      if (out.length >= 1) break; /* chỉ OF còn sống gần nhất; OF cũ hiện khi OF sau bị đóng cửa dưới đáy */
     }
     return out;
   }
