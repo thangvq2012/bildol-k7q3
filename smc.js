@@ -549,8 +549,20 @@ const SMC = (() => {
         }
       }
       if (m.ev === 2 || m.ev === -2) {
-        if (m.ev === 2 && pd === -1 && ms[i - 1].oTop != null) L = { d: -1, A: ms[i - 1].oTop, AI: ms[i - 1].oTopI, B: Math.min(pB, k.low), i0: i, t0: k.time, done: false, gaps: gaps.slice() };
-        else if (m.ev === -2 && pd === 1 && ms[i - 1].oBot != null) L = { d: 1, A: ms[i - 1].oBot, AI: ms[i - 1].oBotI, B: Math.max(pB, k.high), i0: i, t0: k.time, done: false, gaps: gaps.slice() };
+        // v3: đỉnh/đáy chỉ là CHÍNH THỨC nếu đã hồi (mitigation) >= 50% nhịp trước nó; chưa thì lùi về đỉnh/đáy chính thức trước đó
+        const offA = (up) => {
+          let cur = up ? ms[i - 1].oTop : ms[i - 1].oBot, j = up ? ms[i - 1].oTopI : ms[i - 1].oBotI;
+          for (let q = 0; q < 8 && j != null && ms[j]; q++) {
+            const P = up ? ms[j].oTop : ms[j].oBot, Lx = up ? (ms[j].tBot != null ? ms[j].tBot : ms[j].oBot) : (ms[j].tTop != null ? ms[j].tTop : ms[j].oTop);
+            if (P == null || Lx == null || P === cur) break;
+            const r = up ? (P > Lx ? (cur - Lx) / (P - Lx) : null) : (Lx > P ? (Lx - cur) / (Lx - P) : null);
+            if (r == null || r >= 0.5) break;
+            cur = P; j = up ? ms[j].oTopI : ms[j].oBotI;
+          }
+          return { A: cur, AI: j };
+        };
+        if (m.ev === 2 && pd === -1 && ms[i - 1].oTop != null) { const o = offA(true); L = { d: -1, A: o.A, AI: o.AI, B: Math.min(pB, k.low), i0: i, t0: k.time, done: false, gaps: gaps.slice() }; }
+        else if (m.ev === -2 && pd === 1 && ms[i - 1].oBot != null) { const o = offA(false); L = { d: 1, A: o.A, AI: o.AI, B: Math.max(pB, k.high), i0: i, t0: k.time, done: false, gaps: gaps.slice() }; }
         else if (L && ((m.ev === -2 && L.d === -1) || (m.ev === 2 && L.d === 1))) L = null;
         pd = m.ev > 0 ? 1 : -1; pA = null; pAI = null; pB = m.ev > 0 ? k.high : k.low; gaps = [];
       } else if (pd === -1) { pB = Math.min(pB, k.low); if (m.ev === -1 && m.nTop && pA == null) { pA = m.oTop; pAI = m.oTopI; } }
