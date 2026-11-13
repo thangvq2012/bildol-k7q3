@@ -545,6 +545,12 @@ function drawSMC(ctx, plotW, plotH) {
       : K.need === "choch" ? `KB4: H4 ${h4} · khung ${tf} — đứng ngoài, chờ CHoCH${h4}` : `KB4: H4 ${h4} — chờ cặp đỉnh/đáy mới`;
     ctx.save(); ctx.font = "600 10px 'IBM Plex Mono', monospace"; ctx.textAlign = "right"; ctx.fillStyle = C.mag; ctx.textBaseline = "bottom"; ctx.fillText(txt, plotW - 6, plotH - 6); ctx.restore();
   }
+  // KB4 nhiều OF chưa hoàn thành mitigation (OTE + EXT mỗi OF)
+  for (const Z of (R.kb4?.more || [])) {
+    const sell = Z.side === "SELL", kc = sell ? "229,83,75" : "38,179,132", ofx = `OF ${f(Z.a)}→${f(Z.b)}`;
+    box(Z.aT, Z.exLo, Z.exHi, `rgba(${kc},.08)`, `rgba(${kc},.6)`, `KB4 chờ ${Z.side} · EXT ${f(Z.exLo)}–${f(Z.exHi)} (${ofx})`, sell ? "top" : "bottom");
+    box(Z.aT, Z.lo, Z.hi, `rgba(${kc},.16)`, `rgba(${kc},.9)`, `KB4 chờ ${Z.side} · OTE ${f(Z.lo)}–${f(Z.hi)} (${ofx})`, "top");
+  }
   // KB4: tín hiệu vào lệnh (nến rút râu → retest vùng → đóng cửa ngoài vùng), chỉ hiển thị
   for (const g of (R.kb4?.signals || [])) {
     if (g.status === "SL") continue; // 13/11: lệnh theo setup chạm SL thì xóa khỏi chart

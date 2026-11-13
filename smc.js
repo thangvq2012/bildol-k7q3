@@ -603,16 +603,25 @@ const SMC = (() => {
     //  • đóng cửa dưới đáy → OF hết hiệu lực (bỏ); • pull về ≥50% Fibo (đóng cửa) rồi giá vượt đỉnh OF → đã khai thác đủ (ROF), bỏ;
     //  • vượt đỉnh khi chưa pull ≥50% → đỉnh OF dời lên (đo từ đáy tới đỉnh cao nhất); • còn lại: OF chưa khai thác đủ → giữ, vẽ OTE+EXT.
     //  Đỉnh phải là đỉnh cao hơn các đỉnh trước đó trong pha (OF của cấu trúc, không phải nhịp hồi lower-high).
-    const cand = [{ a: sg * ob, aI: oi }]; for (const g of legs) cand.push({ a: g.a, aI: g.aI });
-    const seenA = new Set();
+    // đáy/đỉnh thấp nhất của pha ngược trước CHoCH (vd 3852): cũng là gốc của một OF (OF1) — OB của CHoCH chỉ là đáy minor sau đó
+    let ps = 0; for (let i = s - 1; i > 0; i--) if (ms[i].ev === (sg === 1 ? -2 : 2)) { ps = i; break; }
+    let pl = Infinity, pli = -1; for (let q = ps; q <= oi; q++) { const v = sg === 1 ? c[q].low : -c[q].high; if (v < pl) { pl = v; pli = q; } }
+    const cand = []; if (pli >= 0 && pli < oi && pl < sg * ob) cand.push({ a: pl, aI: pli });
+    cand.push({ a: sg * ob, aI: oi }); for (const g of legs) cand.push({ a: g.a, aI: g.aI });
+    const seenA = new Set(); let rof = null;
     for (let ci = cand.length - 1; ci >= 0; ci--) {
       const g = cand[ci]; if (seenA.has(g.aI)) continue; seenA.add(g.aI);
-      let T = g.a, TI = g.aI, pulled = false, dead = false, exh = false;
+      let T = g.a, TI = g.aI, pulled = false, dead = false, exh = false, q_ex = -1;
       for (let q = g.aI + 1; q < n; q++) {
         const cl = sg * c[q].close, hq = sg === 1 ? c[q].high : -c[q].low;
         if (cl < g.a) { dead = true; break; }
-        if (hq > T) { if (pulled) { exh = true; break; } T = hq; TI = q; }
+        if (hq > T) { if (pulled) { exh = true; q_ex = q; break; } T = hq; TI = q; }
         else if (!pulled && T > g.a && cl <= T - 0.5 * (T - g.a)) pulled = true;
+      }
+      if (exh && !dead && TI > g.aI && (T - g.a) >= 2 * atr && (!rof || q_ex > rof.exI)) { /* ROF: OF đã khai thác đủ (pull ≥50% rồi vượt đỉnh) → đo lại Fibo từ đáy thấp nhất tới đỉnh cao nhất */
+        let lw = Infinity, lwI = g.aI, hg = -Infinity, hgI = g.aI, okR = true;
+        for (let q = g.aI; q < n; q++) { const lv = sg === 1 ? c[q].low : -c[q].high, hv2 = sg === 1 ? c[q].high : -c[q].low; if (sg * c[q].close < g.a) { okR = false; break; } if (lv < lw) { lw = lv; lwI = q; } if (hv2 > hg) { hg = hv2; hgI = q; } }
+        if (okR && hg - lw >= 2 * atr && lwI < hgI) rof = { a: lw, aI: lwI, b: hg, bI: hgI, exI: q_ex };
       }
       if (dead || exh || TI === g.aI) continue;
       let pk = -Infinity; for (let q = oi; q < g.aI; q++) { const v = sg === 1 ? c[q].high : -c[q].low; if (v > pk) pk = v; }
@@ -623,6 +632,11 @@ const SMC = (() => {
       const e1 = sg * (T - sz * lo), e2 = sg * (T - sz * hi), ol = Math.min(e1, e2), oh = Math.max(e1, e2);
       out.push({ side: sg === 1 ? "BUY" : "SELL", a: ra, b: rb, aT: c[g.aI].time, bT: c[TI].time, lo: ol, hi: oh, exLo: sg === 1 ? ra : oh, exHi: sg === 1 ? ol : ra, pulled });
       if (out.length >= 4) break;
+    }
+    if (rof) {
+      const sz = rof.b - rof.a, e1 = sg * (rof.b - sz * lo), e2 = sg * (rof.b - sz * hi), ol = Math.min(e1, e2), oh = Math.max(e1, e2), ra = sg * rof.a, rb = sg * rof.b;
+      const dup = out.some((z) => Math.abs(z.a - ra) < 0.05 && Math.abs(z.b - rb) < 0.05) || (cur && cur.a != null && Math.abs(ra - cur.a) < 0.05 && Math.abs(rb - cur.b) < 0.05);
+      if (!dup) out.push({ side: sg === 1 ? "BUY" : "SELL", a: ra, b: rb, aT: c[rof.aI].time, bT: c[rof.bI].time, lo: ol, hi: oh, exLo: sg === 1 ? ra : oh, exHi: sg === 1 ? ol : ra, rof: true });
     }
     return out;
   }
