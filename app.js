@@ -547,6 +547,7 @@ function drawSMC(ctx, plotW, plotH) {
   }
   // KB4: tín hiệu vào lệnh (nến rút râu → retest vùng → đóng cửa ngoài vùng), chỉ hiển thị
   for (const g of (R.kb4?.signals || [])) {
+    if (g.status === "SL") continue; // 13/11: lệnh theo setup chạm SL thì xóa khỏi chart
     const x0 = X(g.t), x1 = g.endT != null ? X(g.endT) : plotW, sell = g.side === "SELL", col = sell ? C.down : C.up;
     for (const [p, dash, w] of [[g.entry, [], 1.4], [g.sl, [4, 3], 1], [g.tp, [4, 3], 1]]) { const y = Yr(p); if (y == null || y < 0 || y > plotH) continue; hline(ctx, y, x0, x1, col, w, dash, g.status === "open" ? 0.95 : 0.45); }
     const y0 = Yr(g.entry); if (y0 == null || y0 < 0 || y0 > plotH) continue;
