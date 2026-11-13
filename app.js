@@ -535,7 +535,7 @@ function drawSMC(ctx, plotW, plotH) {
     const K = R.kb4, sell = K.side === "SELL";
     const kc = sell ? "229,83,75" : "38,179,132";
     // vùng Extreme (mép sâu OTE → đỉnh/đáy cực trị): đóng cửa vượt Extreme thì setup hết, cấu trúc tiếp diễn
-    box(K.aT, K.exLo, K.exHi, `rgba(${kc},.08)`, `rgba(${kc},.6)`, `KB4 chờ ${K.side} · EXTREME ${f(K.exLo)}–${f(K.exHi)} · SL ${f(K.sl)} · TP ${f(K.tp)}`, sell ? "top" : "bottom");
+    box(K.aT, K.exLo, K.exHi, `rgba(${kc},.08)`, `rgba(${kc},.6)`, `KB4 chờ ${K.side} · EXT ${f(K.exLo)}–${f(K.exHi)} · SL ${f(K.sl)} · TP ${f(K.tp)}`, sell ? "top" : "bottom");
     // vùng OTE: đóng cửa vượt OTE thì bỏ vùng này (còn Extreme)
     if (K.oteOn) box(K.aT, K.lo, K.hi, `rgba(${kc},.16)`, `rgba(${kc},.9)`, `KB4 chờ ${K.side} · OTE ${f(K.lo)}–${f(K.hi)} · SL ${f(K.sl)} · TP ${f(K.tp)}${K.touched ? " · đã chạm" : ""}`, "top");
   } else if (R.kb4 && R.kb4.wait) {
@@ -544,6 +544,13 @@ function drawSMC(ctx, plotW, plotH) {
     const txt = K.need === "noise" ? `KB4: H4 ${h4} nhiễu — đứng ngoài, chờ mốc chính thức H4 (chưa kiểm chứng)`
       : K.need === "choch" ? `KB4: H4 ${h4} · khung ${tf} — đứng ngoài, chờ CHoCH${h4}` : `KB4: H4 ${h4} — chờ cặp đỉnh/đáy mới`;
     ctx.save(); ctx.font = "600 10px 'IBM Plex Mono', monospace"; ctx.textAlign = "right"; ctx.fillStyle = C.mag; ctx.textBaseline = "bottom"; ctx.fillText(txt, plotW - 6, plotH - 6); ctx.restore();
+  }
+  // KB4: tín hiệu vào lệnh (nến rút râu → retest vùng → đóng cửa ngoài vùng), chỉ hiển thị
+  for (const g of (R.kb4?.signals || [])) {
+    const x0 = X(g.t), x1 = g.endT != null ? X(g.endT) : plotW, sell = g.side === "SELL", col = sell ? C.down : C.up;
+    for (const [p, dash, w] of [[g.entry, [], 1.4], [g.sl, [4, 3], 1], [g.tp, [4, 3], 1]]) { const y = Yr(p); if (y == null || y < 0 || y > plotH) continue; hline(ctx, y, x0, x1, col, w, dash, g.status === "open" ? 0.95 : 0.45); }
+    const y0 = Yr(g.entry); if (y0 == null || y0 < 0 || y0 > plotH) continue;
+    tagBox(ctx, x0, y0 + (sell ? -14 : 14), `KB4 ${g.side} ${g.zone} ${f(g.entry)} · SL ${f(g.sl)} · TP ${f(g.tp)} · ${g.status === "open" ? "đang chạy" : g.status === "TP" ? "TP ✓" : "SL ✗"}`, col, "left", g.status === "open");
   }
   // KB8 (chưa kiểm chứng): vùng OTE hợp lưu VAH/FVG — chỉ khung M15
   if (R.kb8) {

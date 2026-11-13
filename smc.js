@@ -567,6 +567,7 @@ const SMC = (() => {
   function kb4Setup(c, ms, h4c, sec, opt = {}) {
     const n = c.length, lo = opt.oteLo ?? 0.705, hi = opt.oteHi ?? 0.79, buf = opt.slBuf ?? 3;
     let f = 0, t0 = null, j = 1, T = null, B = null, P = null, reg = 0;
+    const sigs = [], mkZs = () => [{ w: null, done: false }, { w: null, done: false }];
     const h4Upto = closedIdx(h4c, sec, c[n - 1].time + (opt.tfSec || 300));
     for (let x = 1; x <= h4Upto; x++) {
       const k = h4c[x], p = h4c[x - 1];
@@ -587,25 +588,51 @@ const SMC = (() => {
       if (k.time < t0 || r !== f) continue;
       if (r === -1) {
         if (P && k.close > P.a) P = null;
-        if (m.fm === 1 && m.tBot != null && T && m.tBotI > T.i && m.trend === -1) P = { r, a: T.p, aI: T.i, b: m.tBot, bI: m.tBotI, at: i, ote: true };
-        else if (P && m.tBot != null && m.tBotI === i && m.tBot < P.b) { P.b = m.tBot; P.bI = i; P.ote = true; }
+        if (m.fm === 1 && m.tBot != null && T && m.tBotI > T.i && m.trend === -1) P = { r, a: T.p, aI: T.i, b: m.tBot, bI: m.tBotI, at: i, sb: i, ote: true, zs: mkZs() };
+        else if (P && m.tBot != null && m.tBotI === i && m.tBot < P.b) { P.b = m.tBot; P.bI = i; P.ote = true; P.sb = i; P.zs = mkZs(); }
         if (P && k.close < P.b) P = null; // đã về TP hoặc thủng đáy nhịp: chờ nến tạo đáy mới
         if (P && P.ote && k.close > P.b + (P.a - P.b) * Math.max(lo, hi)) P.ote = false; // 13/11: đóng cửa vượt OTE: bỏ vùng OTE, còn vùng Extreme
       } else {
         if (P && k.close < P.a) P = null;
-        if (m.fm === -1 && m.tTop != null && B && m.tTopI > B.i && m.trend === 1) P = { r, a: B.p, aI: B.i, b: m.tTop, bI: m.tTopI, at: i, ote: true };
-        else if (P && m.tTop != null && m.tTopI === i && m.tTop > P.b) { P.b = m.tTop; P.bI = i; P.ote = true; }
+        if (m.fm === -1 && m.tTop != null && B && m.tTopI > B.i && m.trend === 1) P = { r, a: B.p, aI: B.i, b: m.tTop, bI: m.tTopI, at: i, sb: i, ote: true, zs: mkZs() };
+        else if (P && m.tTop != null && m.tTopI === i && m.tTop > P.b) { P.b = m.tTop; P.bI = i; P.ote = true; P.sb = i; P.zs = mkZs(); }
         if (P && k.close > P.b) P = null;
         if (P && P.ote && k.close < P.b + (P.a - P.b) * Math.max(lo, hi)) P.ote = false; // 13/11: đóng cửa vượt OTE: bỏ vùng OTE, còn vùng Extreme
       }
+      // 13/11: tín hiệu vào lệnh KB4 (chỉ hiển thị). Nến rút râu chạm vùng rồi đóng cửa quay lại ngoài vùng; nến rút râu kế tiếp
+      // (retest vùng, đóng cửa ngoài vùng) → vào tại giá đóng cửa; SL ngoài râu + buf; TP = đáy/đỉnh nhịp. Áp cho cả vùng OTE và EXT.
+      if (P && i > P.sb) {
+        const sell = P.r === -1, q1 = P.b + (P.a - P.b) * lo, q2 = P.b + (P.a - P.b) * hi, qa = Math.min(q1, q2), qb = Math.max(q1, q2);
+        for (let z = 0; z < 2; z++) {
+          if (z === 0 && !P.ote) continue;
+          const zl = z === 0 ? qa : sell ? qb : P.a, zh = z === 0 ? qb : sell ? P.a : qa, st = P.zs[z];
+          if (st.done) continue;
+          const rej = sell ? k.high >= zl && k.close < zl : k.low <= zh && k.close > zh;
+          if (!rej) continue;
+          if (!st.w) { st.w = { i, ext: sell ? k.high : k.low }; continue; }
+          st.done = true;
+          const en = k.close, sl = sell ? Math.max(st.w.ext, k.high) + buf : Math.min(st.w.ext, k.low) - buf, tp = P.b, rk = Math.abs(sl - en);
+          if (rk > 0 && Math.abs(tp - en) / rk >= 1 && (sell ? en > tp : en < tp)) sigs.push({ zone: z === 0 ? "OTE" : "EXT", side: sell ? "SELL" : "BUY", i, wI: st.w.i, entry: en, sl, tp, rr: Math.abs(tp - en) / rk });
+        }
+      }
     }
+    for (const g of sigs) {
+      g.status = "open"; g.endI = null;
+      for (let q = g.i + 1; q < n; q++) {
+        const hitSL = g.side === "SELL" ? c[q].high >= g.sl : c[q].low <= g.sl, hitTP = g.side === "SELL" ? c[q].low <= g.tp : c[q].high >= g.tp;
+        if (hitSL) { g.status = "SL"; g.endI = q; break; }
+        if (hitTP) { g.status = "TP"; g.endI = q; break; }
+      }
+      g.t = c[g.i].time; g.endT = g.endI != null ? c[g.endI].time : null;
+    }
+    const sigOut = sigs.slice(-4);
     const noiseNow = !!(nz && h4Upto >= 0 && nz[h4Upto]);
-    if (!P) return { side: f === -1 ? "SELL" : "BUY", t0, wait: true, tfTrend: ms[n - 1].trend, noise: noiseNow, need: noiseNow ? "noise" : ms[n - 1].trend === f ? "pair" : "choch" };
+    if (!P) return { signals: sigOut, side: f === -1 ? "SELL" : "BUY", t0, wait: true, tfTrend: ms[n - 1].trend, noise: noiseNow, need: noiseNow ? "noise" : ms[n - 1].trend === f ? "pair" : "choch" };
     const e1 = P.b + (P.a - P.b) * lo, e2 = P.b + (P.a - P.b) * hi;
     const stop = P.r === -1 ? P.a + buf : P.a - buf, risk = Math.abs(e1 - stop), rr = Math.abs(P.b - e1) / risk;
     let touched = false;
     for (let i = P.at + 1; i < n; i++) if (P.r === -1 ? c[i].high >= e1 : c[i].low <= e1) touched = true;
-    return { side: P.r === -1 ? "SELL" : "BUY", t0, a: P.a, b: P.b, aT: c[P.aI].time, bT: c[P.bI].time, lo: Math.min(e1, e2), hi: Math.max(e1, e2), oteOn: P.ote, exLo: P.r === -1 ? Math.max(e1, e2) : P.a, exHi: P.r === -1 ? P.a : Math.min(e1, e2), entry: e1, sl: stop, tp: P.b, rr, touched };
+    return { signals: sigOut, side: P.r === -1 ? "SELL" : "BUY", t0, a: P.a, b: P.b, aT: c[P.aI].time, bT: c[P.bI].time, lo: Math.min(e1, e2), hi: Math.max(e1, e2), oteOn: P.ote, exLo: P.r === -1 ? Math.max(e1, e2) : P.a, exHi: P.r === -1 ? P.a : Math.min(e1, e2), entry: e1, sl: stop, tp: P.b, rr, touched };
   }
 
   // ───── phân tích đầy đủ: khung chart + H4, cả hai chiều ─────
