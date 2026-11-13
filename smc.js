@@ -525,7 +525,8 @@ const SMC = (() => {
   }
 
   // ───── KB8 (11/11, CHƯA KIỂM CHỨNG, chỉ hiển thị) — luật ở bildol-dang-ky-kb8.md ─────
-  // Pha giảm: CHoCH▼ → CHoCH▲. A = LH đầu tiên (BOS▼ đầu tiên), B = Low thấp nhất của pha. Tại CHoCH▲ kích hoạt vùng OTE A→B chờ SELL.
+  // 13/11 (v2): A = đỉnh CHÍNH THỨC hiện hành của cấu trúc tại nến CHoCH▲ (đúng đỉnh mà Fibo OTE của engine dùng), không phải LH đầu tiên của pha. B = Low thấp nhất của pha.
+  // (bản cũ: A = LH đầu tiên của pha.) Tại CHoCH▲ kích hoạt vùng OTE A→B chờ SELL.
   // Lệnh: nến tạo đỉnh (fm = -1) có đỉnh tạm trong [0,705; A) và đóng < 0,79. SL đỉnh tạm + slBuf, TP = B (tối đa 3R, dưới 1R bỏ).
   // Hủy: đóng vượt A, CHoCH▼ mới, hoặc quá 96 nến mà chưa kích hoạt. BUY đối xứng. Hợp lưu VAH do app.js đánh giá (cần volume profile).
   function kb8Setup(c, ms, opt = {}) {
@@ -548,8 +549,8 @@ const SMC = (() => {
         }
       }
       if (m.ev === 2 || m.ev === -2) {
-        if (m.ev === 2 && pd === -1 && pA != null) L = { d: -1, A: pA, AI: pAI, B: Math.min(pB, k.low), i0: i, t0: k.time, done: false, gaps: gaps.slice() };
-        else if (m.ev === -2 && pd === 1 && pA != null) L = { d: 1, A: pA, AI: pAI, B: Math.max(pB, k.high), i0: i, t0: k.time, done: false, gaps: gaps.slice() };
+        if (m.ev === 2 && pd === -1 && ms[i - 1].oTop != null) L = { d: -1, A: ms[i - 1].oTop, AI: ms[i - 1].oTopI, B: Math.min(pB, k.low), i0: i, t0: k.time, done: false, gaps: gaps.slice() };
+        else if (m.ev === -2 && pd === 1 && ms[i - 1].oBot != null) L = { d: 1, A: ms[i - 1].oBot, AI: ms[i - 1].oBotI, B: Math.max(pB, k.high), i0: i, t0: k.time, done: false, gaps: gaps.slice() };
         else if (L && ((m.ev === -2 && L.d === -1) || (m.ev === 2 && L.d === 1))) L = null;
         pd = m.ev > 0 ? 1 : -1; pA = null; pAI = null; pB = m.ev > 0 ? k.high : k.low; gaps = [];
       } else if (pd === -1) { pB = Math.min(pB, k.low); if (m.ev === -1 && m.nTop && pA == null) { pA = m.oTop; pAI = m.oTopI; } }
