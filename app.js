@@ -558,7 +558,7 @@ function drawSMC(ctx, plotW, plotH) {
     const K = R.kb8, vp = S.state?.volume_profile, vOk = vp && vp.vah != null && vp.vah >= K.lo && vp.vah <= K.hi;
     const lv = vOk && K.fvg ? "K11" : vOk || K.fvg ? "K12" : "chưa hợp lưu";
     const T = K.trade, st = T ? `vào ${f(T.entry)} SL ${f(T.sl)} TP ${f(T.tp)}` : K.done ? "nến tạo <1R, bỏ" : `chờ nến tạo ${K.side === "SELL" ? "đỉnh" : "đáy"}`;
-    box(K.t0, K.lo, K.hi, "rgba(224,168,58,.14)", "rgba(224,168,58,.95)", `KB8 ${K.side} ${lv} (VAH${vOk ? "✓" : "✗"} FVG${K.fvg ? "✓" : "✗"}) · ${st} · chưa KC`, K.side === "SELL" ? "top" : "bottom");
+    box(K.aT, K.lo, K.hi, "rgba(224,168,58,.14)", "rgba(224,168,58,.95)", `KB8 ${K.side} ${lv} · OTE ${f(K.lo)}–${f(K.hi)} (A ${f(K.A)} → B ${f(K.B)}) · VAH${vOk ? "✓" : "✗"} FVG${K.fvg ? "✓" : "✗"} · ${st} · chưa KC`, K.side === "SELL" ? "top" : "bottom");
   }
   // đường nối mức H4 cũ tới nến quét, khớp TradingView
   for (const w of R.oldSweeps || []) {
