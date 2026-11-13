@@ -590,11 +590,13 @@ const SMC = (() => {
         if (m.fm === 1 && m.tBot != null && T && m.tBotI > T.i && m.trend === -1) P = { r, a: T.p, aI: T.i, b: m.tBot, bI: m.tBotI, at: i };
         else if (P && m.tBot != null && m.tBotI === i && m.tBot < P.b) { P.b = m.tBot; P.bI = i; }
         if (P && k.close < P.b) P = null; // đã về TP hoặc thủng đáy nhịp: chờ nến tạo đáy mới
+        if (P && k.close > P.b + (P.a - P.b) * Math.max(lo, hi)) P = null; // 13/11: nến đóng cửa vượt ngoài vùng Fibo OTE: xóa setup chờ
       } else {
         if (P && k.close < P.a) P = null;
         if (m.fm === -1 && m.tTop != null && B && m.tTopI > B.i && m.trend === 1) P = { r, a: B.p, aI: B.i, b: m.tTop, bI: m.tTopI, at: i };
         else if (P && m.tTop != null && m.tTopI === i && m.tTop > P.b) { P.b = m.tTop; P.bI = i; }
         if (P && k.close > P.b) P = null;
+        if (P && k.close < P.b + (P.a - P.b) * Math.max(lo, hi)) P = null; // 13/11: nến đóng cửa vượt ngoài vùng Fibo OTE: xóa setup chờ
       }
     }
     const noiseNow = !!(nz && h4Upto >= 0 && nz[h4Upto]);
