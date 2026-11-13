@@ -577,6 +577,43 @@ const SMC = (() => {
     return { side: L.d === -1 ? "SELL" : "BUY", A: L.A, aT: L.AI != null && c[L.AI] ? c[L.AI].time : L.t0, B: L.B, t0: L.t0, lo: zLo, hi: zHi, fvg, done: L.done, trade: L.trade || null };
   }
 
+  // 13/11 (11:50): KB4 nhiều OF — mọi OF (nhịp đáy→đỉnh) trong pha cấu trúc khung nhỏ hiện tại (từ CHoCH cùng chiều H4) CHƯA hoàn thành mitigation:
+  // chưa có nến đóng cửa quay về quá 50% Fibo của OF đó (và chưa thủng gốc OF). Mỗi OF có vùng OTE + EXT. Chỉ hiển thị, chưa kiểm chứng.
+  function kb4More(c, ms, sg, opt, cur) {
+    const n = c.length, lo = opt.oteLo ?? 0.705, hi = opt.oteHi ?? 0.79;
+    if (n < 30 || !sg) return [];
+    let s = -1; for (let i = n - 1; i > 0; i--) if (ms[i].ev === (sg === 1 ? 2 : -2)) { s = i; break; }
+    if (s < 0) return [];
+    const ob = sg === 1 ? ms[s].oBot : ms[s].oTop, oi = sg === 1 ? ms[s].oBotI : ms[s].oTopI;
+    if (ob == null || oi == null) return [];
+    let atr = 0; for (let i = n - 14; i < n; i++) atr += c[i].high - c[i].low; atr /= 14;
+    const lowP = (m) => (sg === 1 ? [m.tBot, m.tBotI] : [m.tTop, m.tTopI]), upP = (m) => (sg === 1 ? [m.tTop, m.tTopI] : [m.tBot, m.tBotI]);
+    const legs = []; let B = { p: sg * ob, i: oi }, L = null;
+    for (let i = oi; i < n; i++) {
+      const m = ms[i];
+      if (i > oi && m.fm === sg) { const [p, pi] = lowP(m); if (p != null && pi > B.i) { B = { p: sg * p, i: pi }; L = null; } }
+      if (m.fm === -sg) {
+        const [p, pi] = upP(m);
+        if (p != null && pi > B.i) { if (!L) { L = { a: B.p, aI: B.i, b: sg * p, bI: pi }; legs.push(L); } else if (sg * p > L.b) { L.b = sg * p; L.bI = pi; } }
+      }
+    }
+    let hv = -Infinity, hI = oi; for (let q = oi; q < n; q++) { const v = sg === 1 ? c[q].high : -c[q].low; if (v > hv) { hv = v; hI = q; } }
+    const out = [], seen = new Set();
+    const all = hI > oi ? [{ a: sg * ob, aI: oi, b: hv, bI: hI }, ...legs.slice().reverse()] : legs.slice().reverse();
+    for (const g of all) {
+      const key = g.aI + ":" + g.bI; if (seen.has(key)) continue; seen.add(key);
+      const sz = g.b - g.a; if (!(sz >= 2 * atr)) continue;
+      let ok = true; for (let q = g.bI + 1; q < n; q++) { const cl = sg * c[q].close; if (cl < g.a || cl < g.b - sz * 0.5) { ok = false; break; } }
+      if (!ok) continue;
+      const ra = sg * g.a, rb = sg * g.b;
+      if (cur && cur.a != null && Math.abs(ra - cur.a) < 0.05 && Math.abs(rb - cur.b) < 0.05) continue;
+      const e1 = sg * (g.b - sz * lo), e2 = sg * (g.b - sz * hi), ol = Math.min(e1, e2), oh = Math.max(e1, e2);
+      out.push({ side: sg === 1 ? "BUY" : "SELL", a: ra, b: rb, aT: c[g.aI].time, bT: c[g.bI].time, lo: ol, hi: oh, exLo: sg === 1 ? ra : oh, exHi: sg === 1 ? ol : ra });
+      if (out.length >= 4) break;
+    }
+    return out;
+  }
+
   function kb4Setup(c, ms, h4c, sec, opt = {}) {
     const n = c.length, lo = opt.oteLo ?? 0.705, hi = opt.oteHi ?? 0.79, buf = opt.slBuf ?? 3;
     let f = 0, t0 = null, j = 1, T = null, B = null, P = null, reg = 0;
@@ -677,6 +714,7 @@ const SMC = (() => {
       if (L.sw[i]) { if (L.sw[i].bear) res.sweeps.push({ i, side: "top", txt: L.sw[i].bear.join(" + ") }); if (L.sw[i].bull) res.sweeps.push({ i, side: "bot", txt: L.sw[i].bull.join(" + ") }); }
     }
     if (opt.tfSec === 300 || opt.tfSec === 900) res.kb4 = kb4Setup(c, ms, h4c, sec, opt);
+    if (res.kb4 && res.kb4.side && !res.kb4.noise) { const sg0 = res.kb4.side === "BUY" ? 1 : -1; if (ms[ms.length - 1].trend === sg0) res.kb4.more = kb4More(c, ms, sg0, opt, res.kb4.hi != null ? res.kb4 : null); }
     if (opt.tfSec === 900) res.kb8 = kb8Setup(c, ms, opt);
     res.ms = ms; res.liqH = L.liqH; res.liqL = L.liqL; res.tl = L.tl; res.forms = formMarks(c, ms);
     // chỉ hiển thị: nến quét mức H4 cũ khi đang xem H4 (không tạo lệnh)
