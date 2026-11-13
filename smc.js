@@ -602,8 +602,9 @@ const SMC = (() => {
     const all = hI > oi ? [{ a: sg * ob, aI: oi, b: hv, bI: hI }, ...legs.slice().reverse()] : legs.slice().reverse();
     for (const g of all) {
       const key = g.aI + ":" + g.bI; if (seen.has(key)) continue; seen.add(key);
+      if (hI > oi && g.aI === oi && g !== all[0]) continue; // OF cùng đáy gốc với OF lớn (đáy thấp nhất→đỉnh cao nhất sau ROF) được nối vào OF lớn
       const sz = g.b - g.a; if (!(sz >= 2 * atr)) continue;
-      let ok = true; for (let q = g.bI + 1; q < n; q++) { const cl = sg * c[q].close; if (cl < g.a || cl < g.b - sz * 0.5) { ok = false; break; } }
+      let ok = true; for (let q = g.bI + 1; q < n; q++) { const cl = sg * c[q].close; if (cl < g.a) { ok = false; break; } } /* 13/11 (theo ví dụ của chủ + video ROF): OF chỉ hết hiệu lực khi đóng cửa dưới đáy gốc; mitigation ≥50% không giết OF */
       if (!ok) continue;
       const ra = sg * g.a, rb = sg * g.b;
       if (cur && cur.a != null && Math.abs(ra - cur.a) < 0.05 && Math.abs(rb - cur.b) < 0.05) continue;
@@ -714,7 +715,7 @@ const SMC = (() => {
       if (L.sw[i]) { if (L.sw[i].bear) res.sweeps.push({ i, side: "top", txt: L.sw[i].bear.join(" + ") }); if (L.sw[i].bull) res.sweeps.push({ i, side: "bot", txt: L.sw[i].bull.join(" + ") }); }
     }
     if (opt.tfSec === 300 || opt.tfSec === 900) res.kb4 = kb4Setup(c, ms, h4c, sec, opt);
-    if (res.kb4 && res.kb4.side && !res.kb4.noise) { const sg0 = res.kb4.side === "BUY" ? 1 : -1; if (ms[ms.length - 1].trend === sg0) res.kb4.more = kb4More(c, ms, sg0, opt, res.kb4.hi != null ? res.kb4 : null); }
+    if (res.kb4 && res.kb4.side && !res.kb4.noise) { const sg0 = res.kb4.side === "BUY" ? 1 : -1; res.kb4.more = kb4More(c, ms, sg0, opt, res.kb4.hi != null ? res.kb4 : null); }
     if (opt.tfSec === 900) res.kb8 = kb8Setup(c, ms, opt);
     res.ms = ms; res.liqH = L.liqH; res.liqL = L.liqL; res.tl = L.tl; res.forms = formMarks(c, ms);
     // chỉ hiển thị: nến quét mức H4 cũ khi đang xem H4 (không tạo lệnh)
