@@ -622,7 +622,7 @@ const SMC = (() => {
       if (cur && cur.a != null && Math.abs(ra - cur.a) < 0.05 && Math.abs(rb - cur.b) < 0.05) continue;
       const e1 = sg * (T - sz * lo), e2 = sg * (T - sz * hi), ol = Math.min(e1, e2), oh = Math.max(e1, e2);
       out.push({ side: sg === 1 ? "BUY" : "SELL", a: ra, b: rb, aT: c[g.aI].time, bT: c[TI].time, lo: ol, hi: oh, exLo: sg === 1 ? ra : oh, exHi: sg === 1 ? ol : ra, pulled });
-      if (out.length >= 1) break; /* chỉ OF còn sống gần nhất; OF cũ hiện khi OF sau bị đóng cửa dưới đáy */
+      if (out.length >= 4) break;
     }
     return out;
   }
