@@ -52,7 +52,7 @@ const vnClock = (t) => new Date((t + TZ) * 1000).toISOString().slice(11, 16);
 const vnDate = (t) => new Date((t + TZ) * 1000).toISOString().slice(0, 10);
 const nowSec = () => Math.floor(Date.now() / 1000);
 function chip(sel, cls, text) { const el = $(sel); el.className = "chip " + cls; el.lastChild.textContent = text; }
-const opt = (src) => (isXAU() ? S.state?.options?.[src] || null : S.state?.options_x?.[S.inst] || null);   // mã khác: 1 nguồn (BTC = Deribit) cho mọi ô GC/GLD
+const opt = (src) => (isXAU() ? S.state?.options?.[src] || null : src === "GLD" ? null : S.state?.options_x?.[S.inst] || null);   // mã khác: 1 nguồn (BTC = Deribit) cho mọi ô GC/GLD
 const prim = () => opt(S.primary) || opt(S.primary === "GC" ? "GLD" : "GC");
 // Bước 3: ô chọn kỳ hạn chỉ đổi phần XEM (Strike Profile + mốc vẽ trên chart); tín hiệu & Agent luôn dùng "Mọi kỳ hạn"
 const optV = (src) => { const o = opt(src); return !o || S.tenor === "all" ? o : (o.by_tenor?.[S.tenor] || o); };
@@ -410,7 +410,7 @@ function drawOverlay() {
       hline(ctx, y, 0, plotW, lc, isCW || isPW ? 1.6 : 1, isCW || isPW ? [] : [4, 4], isCW || isPW ? 0.95 : 0.25 + 0.6 * share);
       if (labelSet.has(s.strike) || isCW || isPW) {
         const d = s.d_oi != null ? ` ${s.d_oi >= 0 ? "+" : ""}${fmtK(s.d_oi)}` : "";
-        const txt = `${src} ${s.strike} → ${fmt(s.chart)} · ${Math.round(share * 100)}%${isCW ? " CW" : isPW ? " PW" : ""}${d}`;
+        const txt = `${isXAU() ? src : S.inst} ${s.strike} → ${fmt(s.chart)} · ${Math.round(share * 100)}%${isCW ? " CW" : isPW ? " PW" : ""}${d}`;
         tagBox(ctx, side === "left" ? 6 : plotW - 6, y, txt, lc, side, isCW || isPW);
       }
     }
@@ -844,7 +844,7 @@ function renderProfile() {
   const sk = (o.surface || [])[0], skTxt = sk ? ` · skew ${sk.skew >= 0 ? "+" : ""}${(sk.skew * 100).toFixed(1)}đ` : "";
   const base = opt(S.profSrc), ei = base?.expiry_info || [], tot = ei.reduce((a, x) => a + x.oi, 0) || 1;
   const shortOI = ei.filter((x) => x.dte <= 7).reduce((a, x) => a + x.oi, 0);
-  const lv = S.state?.live, liveTxt = lv?.time ? ` · tính lại ${new Date(lv.time).toLocaleTimeString("vi-VN")} theo giá ${fmt(lv.price)}` : "";
+  const lv = S.state?.live, liveTxt = isXAU() && lv?.time ? ` · tính lại ${new Date(lv.time).toLocaleTimeString("vi-VN")} theo giá ${fmt(lv.price)}` : "";
   $("#profMeta").textContent = `${TENOR_TXT[S.tenor] || ""}: ${o.n_expiries ?? o.expiries.length} kỳ (${o.expiries.slice(0, 3).join(", ")}${o.expiries.length > 3 ? "…" : ""}) · OI ≤7 ngày ${Math.round((shortOI / tot) * 100)}% · IV ATM ${ivTxt || "—"}${skTxt} · nguồn ${o.source} (giá ${fmt(o.underlying)}) · ${o.model || ""}${rTxt ? " " + rTxt : ""}${expo}${liveTxt} · OI ngày ${o.fetched ? new Date(o.fetched).toLocaleString("vi-VN") : ""}`;
   $("#profMeta").title = "Kỳ hạn: chọn ở ô bên trái (chỉ đổi phần xem; tín hiệu và Agent dùng Mọi kỳ hạn). IV ATM: IV đã làm mượt (smile bậc 2 theo OI, * = nội suy từ kỳ khác). Skew: IV strike 95% − IV strike 105%. Mốc được tính lại mỗi 60 giây hoặc khi giá đi > 2 USD; OI là số cuối ngày của sàn.\nExposure theo quy ước dấu GEX (dealer long call / short put). Vanna Exp: USD delta dealer đổi khi IV +1 điểm. Charm Exp: USD delta dealer đổi sau 1 ngày nếu giá và IV đứng yên. Θ OI: tổng giá trị thời gian mất mỗi ngày của toàn bộ OI.";
   if (!S.profScrolled && $("#atmRow")) { const w = $(".sp .tablewrap"), r = $("#atmRow"); w.scrollTop = r.offsetTop - w.clientHeight / 2; S.profScrolled = true; }
@@ -1345,7 +1345,7 @@ function renderHedge() {
     <div class="tablewrap"><table class="htable hedge"><thead><tr><th>ΔP USD</th>${srcs.map((s) => `<th>${s}</th>`).join("")}<th>Tổng</th><th title="Chỉ các kỳ đáo hạn ≤ 7 ngày">≤ 7 ngày</th></tr></thead><tbody>${rows}</tbody></table></div>
     <canvas id="hedgeCv" class="hedgecv" height="120"></canvas>
     <p class="small">${zTxt(up, "↑ Vùng hedge lớn phía trên:")}<br>${zTxt(dn, "↓ Vùng hedge lớn phía dưới:")}</p>${flowTable(h)}`;
-  $("#hedgeMeta").textContent = `GC${srcs.includes("GLD") ? " + GLD" : ""} · tính lúc ${new Date(h.time).toLocaleTimeString("vi-VN")} ở ${fmt(h.price)}`;
+  $("#hedgeMeta").textContent = `${isXAU() ? "GC" + (srcs.includes("GLD") ? " + GLD" : "") : S.inst + " · Deribit"} · tính lúc ${new Date(h.time).toLocaleTimeString("vi-VN")} ở ${fmt(h.price)}`;
   drawHedgeCurve(h, p);
 }
 function drawHedgeCurve(h, p) {
@@ -1472,8 +1472,11 @@ function showAiLast(force = false) {
 }
 async function askAI() {
   if (STATIC) {
-    if (S.state?.ai_last?.text) showAiLast(true);
-    else $("#aiOut").innerHTML = `<p class="muted">Chưa có nhận định AI nào. Máy tính chạy AI lúc 13:30 mỗi ngày và mỗi lần bấm "AI phân tích" trên board máy tính.</p>`;
+    const a = isXAU() ? S.state?.ai_last : S.state?.ai_last_x?.[S.inst];
+    if (a?.text) showAiLast(true);
+    else $("#aiOut").innerHTML = isXAU()
+      ? `<p class="muted">Chưa có nhận định AI nào. Máy tính chạy AI lúc 13:30 mỗi ngày và mỗi lần bấm "AI phân tích" trên board máy tính.</p>`
+      : `<p class="muted">Chưa có nhận định AI cho ${S.inst}. Nhận định ${S.inst} chỉ có sau khi bấm "AI phân tích" trên board máy tính khi đang chọn ${S.inst} (máy không tự chạy AI cho ${S.inst}).</p>`;
     return;
   }
   const btn = $("#btnAI"), out = $("#aiOut"), c = S.candles, last = c[c.length - 1], sc = S.cfg.signals;
@@ -1573,6 +1576,7 @@ async function boot() {
   document.body.classList.toggle("noopt", !isXAU());
   if (!isXAU()) {   // mã khác: 1 nguồn quyền chọn (BTC = Deribit) thay cho GC/GLD
     const nm = INST().name.slice(0, 3), ky = $("#lyKey")?.nextElementSibling;
+    S.profSrc = "GC";
     if (ky) ky.textContent = nm + " Levels";
     document.querySelectorAll("#profTabs button").forEach((b) => { if (b.dataset.src === "GLD") b.hidden = true; else b.textContent = nm + " · Deribit"; });
   }
