@@ -52,7 +52,7 @@ const vnClock = (t) => new Date((t + TZ) * 1000).toISOString().slice(11, 16);
 const vnDate = (t) => new Date((t + TZ) * 1000).toISOString().slice(0, 10);
 const nowSec = () => Math.floor(Date.now() / 1000);
 function chip(sel, cls, text) { const el = $(sel); el.className = "chip " + cls; el.lastChild.textContent = text; }
-const opt = (src) => (isXAU() ? S.state?.options?.[src] || null : null);
+const opt = (src) => (isXAU() ? S.state?.options?.[src] || null : S.state?.options_x?.[S.inst] || null);   // mã khác: 1 nguồn (BTC = Deribit) cho mọi ô GC/GLD
 const prim = () => opt(S.primary) || opt(S.primary === "GC" ? "GLD" : "GC");
 // Bước 3: ô chọn kỳ hạn chỉ đổi phần XEM (Strike Profile + mốc vẽ trên chart); tín hiệu & Agent luôn dùng "Mọi kỳ hạn"
 const optV = (src) => { const o = opt(src); return !o || S.tenor === "all" ? o : (o.by_tenor?.[S.tenor] || o); };
@@ -429,7 +429,7 @@ function drawOverlay() {
   }
 
   // Volume profile phiên
-  const vp = (isXAU() ? S.state?.volume_profile : null);
+  const vp = (isXAU() ? S.state?.volume_profile : S.state?.vp_x?.[S.inst] || null);
   if (vp && $("#lyVP").checked) {
     for (const [k, lab] of [["poc", "POC"], ["vah", "VAH"], ["val", "VAL"]]) {
       const y = Y(vp[k]); if (y == null) continue;
@@ -475,7 +475,7 @@ function drawOverlay() {
       if (y1 == null || y2 == null || y2 < 0 || y1 > plotH) continue;
       const a = Math.max(0, y1), b = Math.min(plotH, y2), col = z.kind === "accel" ? C.down : C.up;
       ctx.fillStyle = z.kind === "accel" ? "rgba(229,83,75,.07)" : "rgba(38,179,132,.07)"; ctx.fillRect(0, a, plotW, Math.max(1, b - a));
-      if (b - a > 8) tagBox(ctx, plotW * 0.78, (a + b) / 2, `HEDGE ${z.kind === "accel" ? "−Γ" : "+Γ"} ${Math.abs(z.peak).toLocaleString("en-US")} HĐ/${hz.win}$`, col, "left", false);
+      if (b - a > 8) tagBox(ctx, plotW * 0.78, (a + b) / 2, `HEDGE ${z.kind === "accel" ? "−Γ" : "+Γ"} ${Math.abs(z.peak).toLocaleString("en-US")} ${hU1()}/${hz.win}$`, col, "left", false);
     }
   }
   if ($("#lySMC")?.checked && S.smc) drawSMC(ctx, plotW, plotH);
@@ -575,7 +575,7 @@ function drawSMC(ctx, plotW, plotH) {
   }
   // KB8 (chưa kiểm chứng): vùng OTE hợp lưu VAH/FVG — chỉ khung M15
   if (R.kb8) {
-    const K = R.kb8, vp = (isXAU() ? S.state?.volume_profile : null), vOk = vp && vp.vah != null && vp.vah >= K.lo && vp.vah <= K.hi;
+    const K = R.kb8, vp = (isXAU() ? S.state?.volume_profile : S.state?.vp_x?.[S.inst] || null), vOk = vp && vp.vah != null && vp.vah >= K.lo && vp.vah <= K.hi;
     const lv = vOk && K.fvg ? "K11" : vOk || K.fvg ? "K12" : "chưa hợp lưu";
     const T = K.trade, st = T ? `vào ${f(T.entry)} SL ${f(T.sl)} TP ${f(T.tp)}` : K.done ? "nến tạo <1R, bỏ" : `chờ nến tạo ${K.side === "SELL" ? "đỉnh" : "đáy"}`;
     box(K.aT, K.lo, K.hi, "rgba(224,168,58,.14)", "rgba(224,168,58,.95)", `KB8 ${K.side} ${lv} · OTE ${f(K.lo)}–${f(K.hi)} (A ${f(K.A)} → B ${f(K.B)}) · VAH${vOk ? "✓" : "✗"} FVG${K.fvg ? "✓" : "✗"} · ${st} · chưa KC`, K.side === "SELL" ? "top" : "bottom");
@@ -639,6 +639,7 @@ function divAt(i) {
 }
 function evaluate(i, live) {
   const sc = S.cfg.signals, c = S.candles, k = c[i], L = primaryLevels();
+  if (!isXAU()) return null;   // tín hiệu Options Flow chỉ có cho vàng
   if (!L || L.call_wall == null || L.put_wall == null) return null;
   if (i < Math.max(sc.div_lookback, sc.vol_sma, sc.cvd_slope_bars) + 2) return null;
   if (sc.session_only && !inUsSession(k.time)) return null;
@@ -779,8 +780,8 @@ function renderAgent() {
   const L = a.L, dealer = a.neg ? "Giá dưới Flip" : "Giá trên Flip";
   $("#decision").innerHTML = `<div class="act ${a.act.toLowerCase()}">${a.act}</div>
     <dl><dt>Regime</dt><dd>${a.regime}</dd><dt>Vị trí</dt><dd>${dealer}</dd>
-    <dt>Lệnh lớn</dt><dd>${(() => { const f = bigFlow(S.cfg?.signals?.cvd_slope_bars ?? 5); return f ? `MUA ${f.b.toFixed(0)} · BÁN ${f.s.toFixed(0)} oz → ròng ${f.d >= 0 ? "+" : "−"}${Math.abs(f.d).toFixed(0)} (${f.nb}/${f.ns} lệnh ≥ ${S.big.thr?.toFixed(0)} oz)` : "đang thu thập"; })()}</dd>
-    <dt>Hedge LP</dt><dd>${(() => { const v = hedgePer(a.p), z = hZoneAt(a.p); return v == null ? "—" : `≈ ${Math.abs(Math.round(v)).toLocaleString("en-US")} HĐ/${hedgeSt().win}$ (${hTier(v)}, ${v > 0 ? "−Γ" : "+Γ"})${z ? " · trong vùng hedge lớn" : ""}`; })()}</dd>
+    <dt>Lệnh lớn</dt><dd>${(() => { const f = bigFlow(S.cfg?.signals?.cvd_slope_bars ?? 5); return f ? `MUA ${f.b.toFixed(0)} · BÁN ${f.s.toFixed(0)} ${qU()} → ròng ${f.d >= 0 ? "+" : "−"}${Math.abs(f.d).toFixed(0)} (${f.nb}/${f.ns} lệnh ≥ ${S.big.thr?.toFixed(0)} ${qU()})` : "đang thu thập"; })()}</dd>
+    <dt>Hedge LP</dt><dd>${(() => { const v = hedgePer(a.p), z = hZoneAt(a.p); return v == null ? "—" : `≈ ${Math.abs(Math.round(v)).toLocaleString("en-US")} ${hU1()}/${hedgeSt().win}$ (${hTier(v)}, ${v > 0 ? "−Γ" : "+Γ"})${z ? " · trong vùng hedge lớn" : ""}`; })()}</dd>
     <dt>Mốc bối cảnh</dt><dd>${fmt(a.target)} <span class="muted">(${esc(a.why)})</span></dd><dt title="Tính từ nến và dòng tiền Binance perp, khác Conviction FXCM trên TradingView">Conviction (Binance)</dt><dd>${sgn(a.conv, 2)}</dd>
     ${S.smc ? `<dt title="Cấu trúc theo nến Binance perp, có thể khác FXCM. Khi vào lệnh, lấy cấu trúc trên chart TradingView làm chuẩn.">Cấu trúc (Binance)</dt><dd>${esc(S.smc.struct)}</dd>` : ""}</dl>`;
   const w = Math.abs(a.conv) * 45;
@@ -873,19 +874,20 @@ function renderMacro() {
 let warnExtra = [];
 function addWarn(t) { if (!warnExtra.includes(t)) warnExtra.push(t); renderWarn(); }
 function renderWarn() {
-  const errs = [...(S.state?.errors || []), ...warnExtra];
+  const errs = [...((isXAU() ? S.state?.errors : S.state?.x_errors?.[S.inst]) || []), ...warnExtra];
   if (S.state?.demo) errs.unshift("CHẾ ĐỘ DEMO: giá và Options là dữ liệu giả lập.");
   const w = $("#warn"); w.hidden = !errs.length; w.textContent = errs.join("  •  ");
   // ghi chú (dùng bản lưu còn mới, cùng phiên) → dòng xám nhỏ, không phải cảnh báo
   let n = $("#notes");
   if (!n) { n = document.createElement("div"); n.id = "notes"; n.className = "notes"; w.after(n); }
-  const notes = S.state?.notes || [];
+  const notes = (isXAU() ? S.state?.notes : null) || [];
   n.hidden = !notes.length; n.textContent = notes.length ? "ℹ " + notes.join("  •  ") : "";
 }
 function renderEngineChip() {
   const st = S.state;
   if (!st) return chip("#chipEngine", "bad", "Engine offline");
-  const age = st.options_updated ? (Date.now() - new Date(st.options_updated)) / 60000 : null;
+  const ou = isXAU() ? st.options_updated : st.options_x?.[S.inst]?.fetched;
+  const age = ou ? (Date.now() - new Date(ou)) / 60000 : null;
   chip("#chipEngine", st.demo ? "mid" : st.status === "ok" ? "ok" : "mid", st.demo ? "Engine DEMO" : age != null ? `Options ${Math.round(age)}p trước` : "Engine đang chạy");
   const r = st.refs || {};
   $("#metaRef").textContent = `GC ${fmt(r.gc)} · GLD ${fmt(r.gld)}`;
@@ -970,7 +972,7 @@ function renderBig() {
   const el = $("#bigVal"); if (!el) return;
   const f = bigFlow(S.cfg?.signals?.cvd_slope_bars ?? 5), thr = S.big.thr;
   const nb = S.cfg?.signals?.cvd_slope_bars ?? 5, fx = (v) => Math.round(v).toLocaleString("en-US");
-  el.innerHTML = thr == null ? "đang thu thập…" : `≥ ${thr.toFixed(thr < 10 ? 1 : 0)} oz · ${nb} nến: ${f ? `<b class="up">MUA ${fx(f.b)} oz</b> (${f.nb}) · <b class="down">BÁN ${fx(f.s)} oz</b> (${f.ns}) · ròng <b class="${f.d >= 0 ? "up" : "down"}">${f.d >= 0 ? "+" : "−"}${fx(Math.abs(f.d))}</b>` : "chưa đủ dữ liệu"}`;
+  el.innerHTML = thr == null ? "đang thu thập…" : `≥ ${thr.toFixed(thr < 10 ? 1 : 0)} ${qU()} · ${nb} nến: ${f ? `<b class="up">MUA ${fx(f.b)} ${qU()}</b> (${f.nb}) · <b class="down">BÁN ${fx(f.s)} ${qU()}</b> (${f.ns}) · ròng <b class="${f.d >= 0 ? "up" : "down"}">${f.d >= 0 ? "+" : "−"}${fx(Math.abs(f.d))}</b>` : "chưa đủ dữ liệu"}`;
 }
 async function bigBackfill(f) {
   // Tải NHẸ để không bị Binance chặn IP: tối đa 40 trang (1.000 giao dịch/trang), tuần tự, nghỉ 250 ms giữa các trang.
@@ -1293,7 +1295,8 @@ function drawEquity(done) {
 // ─────────────────────────── Bước 5: mô phỏng Rebalance Hedge của LP ───────────────────────────
 // Backend tính N(ΔP) = số HĐ GC tương đương LP phải MUA (+) / BÁN (−) trên lưới ±100 USD quanh giá lúc tính.
 // Board dời theo giá live: N từ giá hiện tại = N(x0 + ΔP) − N(x0), x0 = giá live − giá lúc tính.
-const hedgeSt = () => (isXAU() ? S.state?.hedge || null : null);
+const hedgeSt = () => (isXAU() ? S.state?.hedge || null : S.state?.hedge_x?.[S.inst] || null);
+const hU = () => (isXAU() ? "HĐ GC" : INST().name.slice(0, 3)), hU1 = () => (isXAU() ? "HĐ" : INST().name.slice(0, 3)), qU = () => (isXAU() ? "oz" : INST().name.slice(0, 3));
 function interp(xs, ys, x) {
   if (!xs?.length) return null;
   if (x <= xs[0]) return ys[0];
@@ -1323,7 +1326,7 @@ function flowTable(h) {
   const f = h.flow; if (!f?.rows?.length) return "";
   const sign = (v) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toLocaleString("en-US")}`;
   const rows = f.rows.map((r) => `<tr><td>${r.label}</td>${f.sources.map((s) => `<td>${sign(r[s])}</td>`).join("")}<td class="${r.total > 0 ? "up" : r.total < 0 ? "down" : ""}"><b>${sign(r.total)}</b></td></tr>`).join("");
-  return `<p class="small" title="Giá đứng yên, OI giữ nguyên, IV đổi song song mọi strike. Đây là kịch bản theo quy ước LP long call / short put, không phải vị thế thật.">Hedge khi giá đứng yên (HĐ GC, + LP mua, − LP bán)</p>
+  return `<p class="small" title="Giá đứng yên, OI giữ nguyên, IV đổi song song mọi strike. Đây là kịch bản theo quy ước LP long call / short put, không phải vị thế thật.">Hedge khi giá đứng yên (${hU()}, + LP mua, − LP bán)</p>
     <div class="tablewrap"><table class="htable hedge"><thead><tr><th>Kịch bản</th>${f.sources.map((s) => `<th>${s}</th>`).join("")}<th>Tổng</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
@@ -1337,8 +1340,8 @@ function renderHedge() {
   const rows = h.moves.map((m) => `<tr><td class="${m.dp > 0 ? "up" : "down"}">${m.dp > 0 ? "+" : ""}${m.dp}</td>
     ${srcs.map((src) => `<td>${nHD(sh(src, m.dp))}</td>`).join("")}<td><b>${nHD(hedgeFrom(m.dp, p))}</b></td><td>${nHD(hedgeFrom(m.dp, p, "short"))}</td></tr>`).join("");
   const per = hedgePer(p), z = hZoneAt(p), up = hNext(p, true), dn = hNext(p, false);
-  const zTxt = (q, lab) => q ? `${lab} <b>${fmt(q.lo)}–${fmt(q.hi)}</b> (đỉnh ${Math.abs(q.peak).toLocaleString("en-US")} HĐ/${h.win}$, ${q.kind === "accel" ? "−Γ" : "+Γ"})` : `${lab} không có trong ±100 USD`;
-  box.innerHTML = `<p class="hedgehead">Tại ${fmt(p)}: mỗi ${h.win} USD LP giao dịch ≈ <b>${Math.abs(Math.round(per ?? 0)).toLocaleString("en-US")} HĐ GC</b> · cỡ <b>${hTier(per)}</b> · ${per == null ? "" : hKind(per)}${z ? ` · <span class="hz">ĐANG TRONG VÙNG HEDGE LỚN</span>` : ""}</p>
+  const zTxt = (q, lab) => q ? `${lab} <b>${fmt(q.lo)}–${fmt(q.hi)}</b> (đỉnh ${Math.abs(q.peak).toLocaleString("en-US")} ${hU1()}/${h.win}$, ${q.kind === "accel" ? "−Γ" : "+Γ"})` : `${lab} không có trong ±${isXAU() ? 100 : 10000} USD`;
+  box.innerHTML = `<p class="hedgehead">Tại ${fmt(p)}: mỗi ${h.win} USD LP giao dịch ≈ <b>${Math.abs(Math.round(per ?? 0)).toLocaleString("en-US")} ${hU()}</b> · cỡ <b>${hTier(per)}</b> · ${per == null ? "" : hKind(per)}${z ? ` · <span class="hz">ĐANG TRONG VÙNG HEDGE LỚN</span>` : ""}</p>
     <div class="tablewrap"><table class="htable hedge"><thead><tr><th>ΔP USD</th>${srcs.map((s) => `<th>${s}</th>`).join("")}<th>Tổng</th><th title="Chỉ các kỳ đáo hạn ≤ 7 ngày">≤ 7 ngày</th></tr></thead><tbody>${rows}</tbody></table></div>
     <canvas id="hedgeCv" class="hedgecv" height="120"></canvas>
     <p class="small">${zTxt(up, "↑ Vùng hedge lớn phía trên:")}<br>${zTxt(dn, "↓ Vùng hedge lớn phía dưới:")}</p>${flowTable(h)}`;
@@ -1362,7 +1365,7 @@ function drawHedgeCurve(h, p) {
   const xp = X(p); ctx.strokeStyle = C.fg; ctx.beginPath(); ctx.moveTo(xp, 0); ctx.lineTo(xp, Hh); ctx.stroke();
   ctx.font = "10px 'IBM Plex Mono', monospace"; ctx.fillStyle = C.muted; ctx.textBaseline = "top";
   ctx.textAlign = "left"; ctx.fillText(`${fmt(xs[0], 0)}`, 2, Hh - 12); ctx.textAlign = "right"; ctx.fillText(`${fmt(xs[xs.length - 1], 0)}`, W - 2, Hh - 12);
-  ctx.textAlign = "left"; ctx.fillText(`HĐ/${h.win}$  ↑ −Γ · ↓ +Γ · vạch ±${h.big}`, 2, 2);
+  ctx.textAlign = "left"; ctx.fillText(`${hU1()}/${h.win}$  ↑ −Γ · ↓ +Γ · vạch ±${h.big}`, 2, 2);
 }
 // Bản đồ sau đáo hạn + Wall sống: chỉ hiển thị, không tạo tín hiệu
 function renderExpMap() {
@@ -1448,7 +1451,7 @@ function exportCsv() {
 async function pollState(first = false) {
   try {
     const st = await (await fetch(API("/api/state") + (STATIC ? "?t=" + Date.now() : ""))).json();
-    const changed = JSON.stringify(st.options) !== JSON.stringify(S.state?.options);
+    const optsOf = (x) => (isXAU() ? x?.options : x?.options_x?.[S.inst]), changed = JSON.stringify(optsOf(st)) !== JSON.stringify(optsOf(S.state));
     S.state = st; S.cfg = st.config;
     if (first) return;
     // chênh lệch đổi > 0.6 USD so với lúc vẽ -> tải lại nến cho khớp giá broker
@@ -1460,7 +1463,7 @@ async function pollState(first = false) {
 }
 // Nhận định AI mới nhất do máy tính tự chạy (mỗi 60 phút + sau job 13:30) → tự hiện trên board và bản web
 function showAiLast(force = false) {
-  const a = S.state?.ai_last, out = $("#aiOut");
+  const a = isXAU() ? S.state?.ai_last : S.state?.ai_last_x?.[S.inst], out = $("#aiOut");
   if (!a?.text || (!force && S.aiShown === a.time)) return;
   if (!force && S.aiManual && new Date(S.aiManual) > new Date(a.time)) return;   // đang xem bản vừa bấm tay, mới hơn
   S.aiShown = a.time;
@@ -1477,6 +1480,7 @@ async function askAI() {
   btn.disabled = true; out.innerHTML = `<p class="muted">Claude đang đọc dữ liệu và lập kịch bản… (10–60 giây)</p>`;
   const vavg = c.slice(-sc.vol_sma - 1, -1).reduce((a, x) => a + x.vol, 0) / sc.vol_sma, d = divAt(c.length - 1), ag = agentState();
   const body = {
+    inst: S.inst,
     price: lastPrice(),
     flow: { lenh_lon: (() => { const f = bigFlow(sc.cvd_slope_bars); return f ? { nguong_oz: S.big.thr, rong_oz_5_nen: f.d, mua_lon_oz_5_nen: f.b, ban_lon_oz_5_nen: f.s, so_lenh_mua: f.nb, so_lenh_ban: f.ns, so_lenh: f.n, cvd_lenh_lon_phien: last?.bigcvd, ghi_chu: "giao dịch khớp ≥ ngưỡng trên Binance (đại diện một phần)" } : null; })(), cvd_phien: last?.cvd, cvd_doc_5_nen: c.length > 6 ? last.cvd - c[c.length - 6].cvd : null, volume_so_voi_tb: vavg ? last.vol / vavg : null, phan_ky: d.bear ? "âm" : d.bull ? "dương" : "không", khung: S.tf, wall_chinh: S.primary, agent: ag ? { act: ag.act, regime: ag.regime, target: ag.target, conviction: ag.conv } : null,
       smc: S.smc ? { cau_truc: S.smc.struct, ke_hoach: S.smc.plan, lenh: smcOrders().slice(-4).map((o) => ({ gio_vn: vnClock(S.candles[o.created]?.time ?? 0), loai: o.txt, huong: o.side, trang_thai: o.status, entry: o.entry, sl: o.sl, tp1: o.tp1, tp2: o.tp2, tp3: o.tp3 })) } : null },
@@ -1567,6 +1571,11 @@ async function boot() {
     sel.onchange = () => { try { localStorage.setItem("bildol.inst", sel.value); } catch { } location.reload(); };
   }
   document.body.classList.toggle("noopt", !isXAU());
+  if (!isXAU()) {   // mã khác: 1 nguồn quyền chọn (BTC = Deribit) thay cho GC/GLD
+    const nm = INST().name.slice(0, 3), ky = $("#lyKey")?.nextElementSibling;
+    if (ky) ky.textContent = nm + " Levels";
+    document.querySelectorAll("#profTabs button").forEach((b) => { if (b.dataset.src === "GLD") b.hidden = true; else b.textContent = nm + " · Deribit"; });
+  }
   await pollState(true);
   if (!S.state) { $("#warn").hidden = false; $("#warn").textContent = STATIC ? "Chưa tải được dữ liệu (state.json). Kiểm tra mạng rồi mở lại." : "Không kết nối được backend. Hãy chạy MO_DASHBOARD.bat và giữ cửa sổ đen đó mở."; return; }
   // Không có GC thì mặc định dùng GLD cho Strike Profile
