@@ -642,7 +642,7 @@ const SMC = (() => {
       if (nf && nf !== f) { f = nf; t0 = k.time; }
     }
     if (!f) return null;
-    const nz = opt.kb4Noise === false ? null : h4Noise(structure(h4c));
+    const nz = opt.kb4Noise === false ? null : h4Noise(structure(h4c, opt.eqTol ?? 1.5));
     for (let i = 1; i < n; i++) {
       const k = c[i], m = ms[i], r = (() => { const q = closedIdx(h4c, sec, k.time); while (j <= q) { const a = h4c[j], b = h4c[j - 1], nf = a.close < b.low && a.close < a.open ? -1 : a.close > b.high && a.close > a.open ? 1 : 0; if (nf) reg = nf; j++; } return reg; })();
       if (T && m.tTop != null && m.tTopI === i && m.tTop > T.p) T = { p: m.tTop, i };
@@ -707,8 +707,8 @@ const SMC = (() => {
   function analyze(c, h4c, sec, opt) {
     const res = { ms: [], events: [], sweeps: [], forms: [], liqH: [], liqL: [], tl: null, orders: [], frame: null, struct: "", plan: [] };
     if (c.length < 10 || h4c.length < 10) return res;
-    const ms = structure(c), h4s = structure(h4c), L = liquidity(c, ms, opt), H = liquidity(h4c, h4s, opt);
-    const cm = mirror(c), hm = mirror(h4c), msM = structure(cm), h4sM = structure(hm);
+    const EQT = opt.eqTol ?? 1.5, ms = structure(c, EQT), h4s = structure(h4c, EQT), L = liquidity(c, ms, opt), H = liquidity(h4c, h4s, opt);
+    const cm = mirror(c), hm = mirror(h4c), msM = structure(cm, EQT), h4sM = structure(hm, EQT);
     const LM = liquidity(cm, msM, opt), HM = liquidity(hm, h4sM, opt);
     const down = setupsDown(c, ms, L, h4c, h4s, H, sec, opt);
     const up = setupsDown(cm, msM, LM, hm, h4sM, HM, sec, opt);
@@ -780,7 +780,11 @@ const SMC = (() => {
     const start = nthSun(2, 2) + 7 * 3600, end = nthSun(10, 1) + 6 * 3600; // 02:00 EST = 07:00 UTC; 02:00 EDT = 06:00 UTC
     return t >= start && t < end ? -4 * 3600 : -5 * 3600;
   }
+  // 14/11: mã chạy 24/7 (BTC) -> không lọc giờ FXCM, nến H4/D1 neo 00:00 UTC (như TradingView Bitstamp/Binance)
+  let H24 = false;
+  const setH24 = (v) => { H24 = !!v; };
   function fxOpen(t) { // nến mở lúc t (giây) có nằm trong giờ FXCM mở cửa không
+    if (H24) return true;
     const L = t + nyOffset(t), d = new Date(L * 1000), wd = d.getUTCDay(), h = d.getUTCHours();
     if (h === 17) return false;                       // nghỉ hằng ngày 17:00–18:00
     if (wd === 6) return false;                       // thứ 7
@@ -789,7 +793,7 @@ const SMC = (() => {
     return true;
   }
   const mod = (a, m) => ((a % m) + m) % m;
-  const bucketOf = (t, sec) => t - mod(t + nyOffset(t) - 18 * 3600, sec); // nến H4/D1 neo 18:00 New York
+  const bucketOf = (t, sec) => (H24 ? t - mod(t, sec) : t - mod(t + nyOffset(t) - 18 * 3600, sec)); // nến H4/D1 neo 18:00 New York
   // gộp nến nhỏ (đã lọc giờ mở cửa) thành nến khung lớn theo giờ FXCM
   function aggregate(rows, sec) {
     const out = [];
@@ -806,6 +810,6 @@ const SMC = (() => {
     return Math.max(d0 - Math.ceil((nBars * tfSec * 1.4) / day) * day, h4From);
   }
 
-  return { kb8Setup, h4Noise, structure, liquidity, oldLevels, kb1v3, kb1v3Fill, kb4, kb4Setup, formMarks, analyze, htfAt, closedIdx, fxOpen, bucketOf, aggregate, ltfStart, nyOffset };
+  return { kb8Setup, h4Noise, structure, liquidity, oldLevels, kb1v3, kb1v3Fill, kb4, kb4Setup, formMarks, analyze, htfAt, closedIdx, fxOpen, bucketOf, aggregate, ltfStart, nyOffset, setH24 };
 })();
 if (typeof module !== "undefined") module.exports = SMC;

@@ -7,6 +7,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="style.css?v=e49a1c8b4a">
+<style>
+  #instSel{background:transparent;color:inherit;border:1px solid #333a44;border-radius:4px;font:inherit;font-weight:700;padding:0 2px}
+  #instSel option{background:#0b0e12}
+  body.noopt .panel.sp, body.noopt .panel.llm, body.noopt .panel.hedgep, body.noopt .panel.expmap, body.noopt .pinebox{display:none}
+</style>
 <meta name="robots" content="noindex,nofollow">
 <meta name="theme-color" content="#0b0e12">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -21,7 +26,7 @@
 <body>
 <header class="bar1">
   <div class="brand"><b>BILDOL</b><span id="livePill" class="live">LIVE</span></div>
-  <div class="inst"><span class="on">XAU <small id="sym">XAUUSDT</small></span></div>
+  <div class="inst"><span class="on"><select id="instSel" title="Chọn mã (14/11): XAU đầy đủ; mã khác chỉ có SMC + order flow"><option value="XAU">XAU</option></select> <small id="sym">XAUUSDT</small></span></div>
   <div class="meta"><span id="buildInfo" class="build">—</span><span id="metaRef">GC — · GLD —</span></div>
   <div class="px"><b id="px">—</b><span id="pxchg" class="chg">—</span></div>
   <div class="bars"><b id="nbars">—</b><small>nến</small></div>
@@ -142,7 +147,7 @@
 <footer class="foot">OI cập nhật 1 lần/ngày sau phiên · GEX/DEX dựa trên giả định vị thế LP · Tài khoản Paper là giả lập · Không phải lời khuyên đầu tư.</footer>
 
 <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-<script src="smc.js?v=2874428bd0"></script>
-<script src="app.js?v=6a6ef81e13"></script>
+<script src="smc.js?v=6674b61fd7"></script>
+<script src="app.js?v=c6773bf0b9"></script>
 </body>
 </html>

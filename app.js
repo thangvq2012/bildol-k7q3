@@ -26,6 +26,18 @@ const S = {
   paper: null, planLines: [],
   h4: [], smc: null, h4Ts: 0,
 };
+// ── Chọn mã (14/11). XAU giữ nguyên như cũ. Mã khác: chỉ SMC + order flow, không có Options; ngưỡng giá theo "đơn vị SL" của mã
+//    (người dùng chốt 14/11: vàng 3, BTC 300, USOIL 0,3, Forex 5 pips) -> bằng nhau = 0,5 đơn vị, dung sai chạm = 2/3 đơn vị.
+const INSTRUMENTS = {
+  XAU: null,
+  BTC: { name: "BTCUSD", unit: 300, h24: true, big_trade_usd: 500000, feeds: [
+    { symbol: "BTCUSDT", name: "BTCUSDT (Binance perp)", rest: "https://fapi.binance.com", kpath: "/fapi/v1/klines", ppath: "/fapi/v1/ticker/price", ws: "wss://fstream.binance.com/market/ws" },
+    { symbol: "BTCUSDT", name: "BTCUSDT (Binance spot)", rest: "https://data-api.binance.vision", kpath: "/api/v3/klines", ppath: "/api/v3/ticker/price", ws: "wss://data-stream.binance.vision/ws" },
+  ] },
+};
+S.inst = (() => { try { const v = localStorage.getItem("bildol.inst"); return v && v in INSTRUMENTS ? v : "XAU"; } catch { return "XAU"; } })();
+const INST = () => INSTRUMENTS[S.inst] || null;
+const isXAU = () => !INST();
 
 // ─────────────────────────── tiện ích ───────────────────────────
 const fmt = (x, d = 2) => (x == null || !isFinite(x) ? "—" : Number(x).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }));
@@ -40,7 +52,7 @@ const vnClock = (t) => new Date((t + TZ) * 1000).toISOString().slice(11, 16);
 const vnDate = (t) => new Date((t + TZ) * 1000).toISOString().slice(0, 10);
 const nowSec = () => Math.floor(Date.now() / 1000);
 function chip(sel, cls, text) { const el = $(sel); el.className = "chip " + cls; el.lastChild.textContent = text; }
-const opt = (src) => S.state?.options?.[src] || null;
+const opt = (src) => (isXAU() ? S.state?.options?.[src] || null : null);
 const prim = () => opt(S.primary) || opt(S.primary === "GC" ? "GLD" : "GC");
 // Bước 3: ô chọn kỳ hạn chỉ đổi phần XEM (Strike Profile + mốc vẽ trên chart); tín hiệu & Agent luôn dùng "Mọi kỳ hạn"
 const optV = (src) => { const o = opt(src); return !o || S.tenor === "all" ? o : (o.by_tenor?.[S.tenor] || o); };
@@ -84,6 +96,7 @@ function initCharts() {
 // Nến lấy từ Binance (XAUUSDT) rồi cộng chênh lệch về XAUUSD giao ngay (S.basis) để khớp giá TradingView/broker
 const mk = (openMs, o, h, l, c, v, takerBuy) => { const b = S.basis || 0; return { time: Math.floor(openMs / 1000), open: o + b, high: h + b, low: l + b, close: c + b, vol: v, delta: 2 * takerBuy - v }; };
 function basisNow(sym) {
+  if (!isXAU()) return 0; // chênh lệch giao ngay chỉ dành cho vàng
   // chênh lệch XAUUSD giao ngay − giá nguồn nến, đo riêng cho TỪNG nguồn (XAUUSDT, PAXGUSDT) → nguồn dự phòng cũng khớp TradingView
   const by = S.state?.basis_by, b = S.state?.basis;
   if (sym && by && isFinite(by[sym])) return by[sym];
@@ -103,6 +116,7 @@ function recomputeCvd(from = 0) {
 }
 
 function feeds() {
+  if (INST()?.feeds?.length) return INST().feeds;
   const f = S.cfg.price_feeds;
   if (f && f.length) return f;
   return S.cfg.binance_rest.map((h, i) => ({ symbol: S.cfg.price_symbol, name: S.cfg.price_symbol, rest: h, kpath: "/api/v3/klines", ws: S.cfg.binance_ws[i % S.cfg.binance_ws.length] }));
@@ -151,15 +165,15 @@ async function loadHistory() {
 // ─────────────────────────── SMC: nến H4 + phân tích ───────────────────────────
 const H4_SEC = 14400;
 function smcCfg() {
-  const m = S.cfg?.smc || {}, sc = S.cfg?.signals || {};
+  const m = S.cfg?.smc || {}, sc = S.cfg?.signals || {}, U = INST()?.unit;
   return {
-    oteLo: m.ote_lo ?? 0.705, oteHi: m.ote_hi ?? 0.79, eqTol: m.eq_tol ?? 1.5, trendline: m.trendline ?? true,
-    sweepWin: m.sweep_window ?? 6, slBuf: Math.min(5, m.sl_buffer ?? 3), tol: m.touch_tol ?? sc.touch_tol ?? 2, expiryH4: m.expiry_h4 ?? 6, kb3Atr: m.kb3_atr ?? 2, kb2Once: m.kb2_once ?? true,
+    oteLo: m.ote_lo ?? 0.705, oteHi: m.ote_hi ?? 0.79, eqTol: U ? U * 0.5 : m.eq_tol ?? 1.5, trendline: m.trendline ?? true,
+    sweepWin: m.sweep_window ?? 6, slBuf: U ? U : Math.min(5, m.sl_buffer ?? 3), tol: U ? (U * 2) / 3 : m.touch_tol ?? sc.touch_tol ?? 2, expiryH4: m.expiry_h4 ?? 6, kb3Atr: m.kb3_atr ?? 2, kb2Once: m.kb2_once ?? true,
     kb2: [300, 900].includes(TF_SEC[S.tf]),   // KB2 (confirm) chỉ theo cấu trúc M5 / M15
     kb4: !!$("#lyKB4")?.checked,   // KB4/KB5 chưa đạt kiểm chứng, mặc định tắt
     sessionOk: m.session_only ? inUsSession : null, tfSec: TF_SEC[S.tf], tfName: S.tf.toUpperCase().replace(/^(\d+)M$/, "M$1").replace(/^(\d+)H$/, "H$1"),
     nextStrike: (p, above) => nextStrike(p, above),
-    levels: (() => { const L = primaryLevels(); return L ? { cw: L.call_wall, pw: L.put_wall, flip: L.gamma_flip } : {}; })(),
+    levels: (() => { const L = isXAU() ? primaryLevels() : null; return L ? { cw: L.call_wall, pw: L.put_wall, flip: L.gamma_flip } : {}; })(),
   };
 }
 async function loadHTF() {
@@ -302,7 +316,7 @@ function notifyPending(o) {
     new Notification(`${o.name} ${o.side} LIMIT ${fmt(o.entry)}`, { body: `${o.txt}\nSL ${fmt(o.sl)} · TP1 ${fmt(o.tp1)} · TP2 ${fmt(o.tp2)}` });
 }
 function addSmcSignal(s) {
-  if ($("#autoTrade").checked && !S.paper.pos && !(s.kb >= 4)) {
+  if (isXAU() && $("#autoTrade").checked && !S.paper.pos && !(s.kb >= 4)) {
     const plan = planFor(s);
     paperOpen(s.side, plan.lots, s.sl, s.tp1, `Tự động: ${s.type}`);
   }
@@ -415,7 +429,7 @@ function drawOverlay() {
   }
 
   // Volume profile phiên
-  const vp = S.state?.volume_profile;
+  const vp = (isXAU() ? S.state?.volume_profile : null);
   if (vp && $("#lyVP").checked) {
     for (const [k, lab] of [["poc", "POC"], ["vah", "VAH"], ["val", "VAL"]]) {
       const y = Y(vp[k]); if (y == null) continue;
@@ -561,7 +575,7 @@ function drawSMC(ctx, plotW, plotH) {
   }
   // KB8 (chưa kiểm chứng): vùng OTE hợp lưu VAH/FVG — chỉ khung M15
   if (R.kb8) {
-    const K = R.kb8, vp = S.state?.volume_profile, vOk = vp && vp.vah != null && vp.vah >= K.lo && vp.vah <= K.hi;
+    const K = R.kb8, vp = (isXAU() ? S.state?.volume_profile : null), vOk = vp && vp.vah != null && vp.vah >= K.lo && vp.vah <= K.hi;
     const lv = vOk && K.fvg ? "K11" : vOk || K.fvg ? "K12" : "chưa hợp lưu";
     const T = K.trade, st = T ? `vào ${f(T.entry)} SL ${f(T.sl)} TP ${f(T.tp)}` : K.done ? "nến tạo <1R, bỏ" : `chờ nến tạo ${K.side === "SELL" ? "đỉnh" : "đáy"}`;
     box(K.aT, K.lo, K.hi, "rgba(224,168,58,.14)", "rgba(224,168,58,.95)", `KB8 ${K.side} ${lv} · OTE ${f(K.lo)}–${f(K.hi)} (A ${f(K.A)} → B ${f(K.B)}) · VAH${vOk ? "✓" : "✗"} FVG${K.fvg ? "✓" : "✗"} · ${st} · chưa KC`, K.side === "SELL" ? "top" : "bottom");
@@ -892,7 +906,7 @@ async function renderPine() {
 // → "CVD lệnh lớn" = mua chủ động lớn − bán chủ động lớn (oz), cộng dồn theo phiên. Chạy cả trên bản web (trình duyệt tự nối).
 // Lưu ý: đây là dòng lệnh trên Binance (XAUUSDT/PAXG), chỉ đại diện một phần dòng tiền COMEX/OTC.
 S.big = { thr: null, ids: new Set(), raw: [], byT: {}, ws: null, n: 0, since: null, t0: null, loaded: false };
-const BIG_MIN_USD = () => S.cfg?.signals?.big_trade_usd ?? 50000;
+const BIG_MIN_USD = () => INST()?.big_trade_usd ?? S.cfg?.signals?.big_trade_usd ?? 50000;
 const BIG_KEEP = 8 * 3600e3, BIG_LS = "bildol_big_v2";
 function bigThr(price) {
   // ngưỡng CỐ ĐỊNH theo giá trị USD (config signals.big_trade_usd) → mọi máy/bản web đếm cùng một tập lệnh
@@ -1153,7 +1167,7 @@ async function journalLoad() {
   renderJournal();
 }
 function jPost(list) {
-  if (STATIC || !list.length) return;
+  if (STATIC || !list.length || !isXAU()) return;
   fetch("/api/journal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entries: list }) }).catch(() => { });
 }
 function jUpsert(e) {
@@ -1250,6 +1264,7 @@ function renderJournal() {
 }
 async function runBacktest() {
   const tf = $("#btTf").value; S.bt = { tf, msg: "Đang tải nến…" }; renderJournal();
+  if (!isXAU()) { S.bt = { tf, msg: `Backtest SMC hiện chỉ có cho XAU (đang chọn ${S.inst}).` }; renderJournal(); return; }
   try {
     const get = async (t) => { const r = await (await fetch(API(`/api/klines?tf=${t}`))).json(); if (!r.ok) throw new Error(r.error || "lỗi tải nến"); return r.rows; };
     const mk2 = (r) => ({ time: r[0], open: r[1], high: r[2], low: r[3], close: r[4], vol: r[5], delta: 0 });
@@ -1278,7 +1293,7 @@ function drawEquity(done) {
 // ─────────────────────────── Bước 5: mô phỏng Rebalance Hedge của LP ───────────────────────────
 // Backend tính N(ΔP) = số HĐ GC tương đương LP phải MUA (+) / BÁN (−) trên lưới ±100 USD quanh giá lúc tính.
 // Board dời theo giá live: N từ giá hiện tại = N(x0 + ΔP) − N(x0), x0 = giá live − giá lúc tính.
-const hedgeSt = () => S.state?.hedge || null;
+const hedgeSt = () => (isXAU() ? S.state?.hedge || null : null);
 function interp(xs, ys, x) {
   if (!xs?.length) return null;
   if (x <= xs[0]) return ys[0];
@@ -1400,7 +1415,7 @@ function paperTick(price) {
 }
 function drawPlanLines() {
   S.planLines.forEach((l) => candleS.removePriceLine(l)); S.planLines = [];
-  const pos = S.paper?.pos; if (!pos) return;
+  const pos = S.paper?.pos; if (!pos || !isXAU()) return;
   const add = (price, color, title, style) => price != null && S.planLines.push(candleS.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }));
   add(pos.entry, pos.side === "BUY" ? C.up : C.down, `${pos.side} ${pos.lots}`, 0);
   add(pos.sl, C.down, "SL", 2); add(pos.tp, C.up, "TP", 2);
@@ -1544,6 +1559,14 @@ async function boot() {
   $("#primarySrc").value = S.primary;
   document.querySelectorAll("#tfs button").forEach((x) => x.classList.toggle("on", x.dataset.tf === S.tf));
   if (STATIC) initStatic();
+  SMC.setH24(!!INST()?.h24);
+  const sel = $("#instSel");
+  if (sel) {
+    sel.innerHTML = Object.keys(INSTRUMENTS).map((k) => `<option value="${k}">${k}</option>`).join("");
+    sel.value = S.inst;
+    sel.onchange = () => { try { localStorage.setItem("bildol.inst", sel.value); } catch { } location.reload(); };
+  }
+  document.body.classList.toggle("noopt", !isXAU());
   await pollState(true);
   if (!S.state) { $("#warn").hidden = false; $("#warn").textContent = STATIC ? "Chưa tải được dữ liệu (state.json). Kiểm tra mạng rồi mở lại." : "Không kết nối được backend. Hãy chạy MO_DASHBOARD.bat và giữ cửa sổ đen đó mở."; return; }
   // Không có GC thì mặc định dùng GLD cho Strike Profile
