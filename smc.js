@@ -723,11 +723,30 @@ const SMC = (() => {
       o.time = c[o.created].time; o.i = o.created; o.type2 = o.type;
     }
     // sự kiện cấu trúc + thanh khoản (dữ liệu thật) để vẽ
+    // ChoCH giả (19/11, theo lý thuyết OF/ROF của Mr.Nam, CHƯA kiểm chứng): 1 OF (đỉnh→đáy/đáy→đỉnh) coi là
+    // "khai thác đủ" khi giá pull về ≥50% Fibo của OF rồi mới phá ngược lại đỉnh/đáy gốc. Nếu CHoCH xảy ra (phá
+    // đỉnh/đáy Minor) khi OF hiện tại CHƯA pull đủ 50% → đó là ChoCH giả, giá thường quay lại xu hướng cũ; các cú
+    // phá tiếp theo CÙNG chiều OF gốc được gắn lại là BOS dù smcCore tưởng là đảo chiều (phải khớp Pine).
+    let ofDir = 0, ofFar = null, ofNear = null;
     for (let i = 1; i < c.length; i++) {
       const m = ms[i];
       if (m.nTop) res.events.push({ i: m.oTopI, kind: m.topHH ? "HH" : "LH", p: m.oTop, side: "top" });
       if (m.nBot) res.events.push({ i: m.oBotI, kind: m.botHL ? "HL" : "LL", p: m.oBot, side: "bot" });
-      if (m.ev) res.events.push({ i, kind: Math.abs(m.ev) === 2 ? "CHoCH" : "BOS", dir: Math.sign(m.ev), p: m.brk, from: m.brkI });
+      if (m.ev) {
+        const dirNow = m.ev > 0 ? 1 : -1;
+        let chochFake = false, ofForceBOS = false;
+        if (ofDir === 0) {
+          ofDir = dirNow; ofFar = dirNow === 1 ? m.oBot : m.oTop; ofNear = dirNow === 1 ? m.oTop : m.oBot;
+        } else if (dirNow === ofDir) {
+          ofNear = dirNow === 1 ? m.oTop : m.oBot; ofForceBOS = true;
+        } else {
+          const pct = ofDir === -1 ? (m.brk - ofNear) / (ofFar - ofNear) : (ofNear - m.brk) / (ofNear - ofFar);
+          if (!isFinite(pct) || pct >= 0.5) { ofDir = dirNow; ofFar = dirNow === 1 ? m.oBot : m.oTop; ofNear = dirNow === 1 ? m.oTop : m.oBot; }
+          else chochFake = true;
+        }
+        const isChoch = Math.abs(m.ev) === 2 && !ofForceBOS;
+        res.events.push({ i, kind: isChoch ? (chochFake ? "ChoCH giả" : "CHoCH") : "BOS", fake: isChoch && chochFake, dir: Math.sign(m.ev), p: m.brk, from: m.brkI });
+      }
       if (L.sw[i]) { if (L.sw[i].bear) res.sweeps.push({ i, side: "top", txt: L.sw[i].bear.join(" + ") }); if (L.sw[i].bull) res.sweeps.push({ i, side: "bot", txt: L.sw[i].bull.join(" + ") }); }
     }
     if (opt.tfSec === 300 || opt.tfSec === 900) res.kb4 = kb4Setup(c, ms, h4c, sec, opt);
