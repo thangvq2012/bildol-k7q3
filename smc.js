@@ -745,7 +745,7 @@ const SMC = (() => {
           else chochFake = true;
         }
         const isChoch = Math.abs(m.ev) === 2 && !ofForceBOS;
-        res.events.push({ i, kind: isChoch ? (chochFake ? "ChoCH giả" : "CHoCH") : "BOS", fake: isChoch && chochFake, dir: Math.sign(m.ev), p: m.brk, from: m.brkI });
+        res.events.push({ i, kind: isChoch ? (chochFake ? "False ChoCH" : "CHoCH") : "BOS", fake: isChoch && chochFake, dir: Math.sign(m.ev), p: m.brk, from: m.brkI });
       }
       if (L.sw[i]) { if (L.sw[i].bear) res.sweeps.push({ i, side: "top", txt: L.sw[i].bear.join(" + ") }); if (L.sw[i].bull) res.sweeps.push({ i, side: "bot", txt: L.sw[i].bull.join(" + ") }); }
     }
