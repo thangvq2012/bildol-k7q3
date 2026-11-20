@@ -178,7 +178,7 @@ const SMC = (() => {
         L.push({ p: near, key: (top ? "T" : "B") + nearI + "@" + near, txt: `${top ? "đỉnh" : "đáy"} gần nhất ${near.toFixed(2)}`, n: 1, i: nearI });
       const P = top ? tops : bots, okTl = opt.trendline && P.length >= 2 && (top ? pm.trend === -1 && P[P.length - 1].p < P[P.length - 2].p : pm.trend === 1 && P[P.length - 1].p > P[P.length - 2].p);
       const t = okTl ? tlAt(P, i) : null;
-      if (t != null) L.push({ p: t, key: (top ? "TL" : "BL") + P[P.length - 2].i + "-" + P[P.length - 1].i, txt: "trendline", tl: true });
+      if (t != null) L.push({ p: t, key: (top ? "TL" : "BL") + P[P.length - 2].i + "-" + P[P.length - 1].i, txt: "trendline", tl: true, tla: P[P.length - 2], tlb: P[P.length - 1] });
       return L;
     };
     let curH = [], curL = [], tl = null;
@@ -186,9 +186,10 @@ const SMC = (() => {
       const k = c[i], m = ms[i], pm = ms[i - 1];
       const LH = levels(pm, i, true), LL = levels(pm, i, false);
       const tH = [], tL = [];
-      for (const L of LH) if (!taken.has(L.key) && k.high > L.p && k.close < L.p) { tH.push(L.txt); taken.add(L.key); }
-      for (const L of LL) if (!taken.has(L.key) && k.low < L.p && k.close > L.p) { tL.push(L.txt); taken.add(L.key); }
-      if (tH.length || tL.length) sw[i] = { bear: tH.length ? tH : null, bull: tL.length ? tL : null };
+      let tlH = null, tlL = null; // 2 điểm trendline bị quét (để ẩn nhãn ✕TL khi giá đóng cửa vượt trendline sau đó — 20/11 21:18)
+      for (const L of LH) if (!taken.has(L.key) && k.high > L.p && k.close < L.p) { tH.push(L.txt); taken.add(L.key); if (L.tl) tlH = { a: L.tla, b: L.tlb }; }
+      for (const L of LL) if (!taken.has(L.key) && k.low < L.p && k.close > L.p) { tL.push(L.txt); taken.add(L.key); if (L.tl) tlL = { a: L.tla, b: L.tlb }; }
+      if (tH.length || tL.length) sw[i] = { bear: tH.length ? tH : null, bull: tL.length ? tL : null, bearTl: tlH, bullTl: tlL };
       // cập nhật sau khi nến đóng: mức bị phá bằng giá đóng cửa thì bỏ; đỉnh/đáy chính thức mới thì thêm
       for (let j = offT.length - 1; j >= 0; j--) if (k.close > offT[j].p) offT.splice(j, 1);
       for (let j = offB.length - 1; j >= 0; j--) if (k.close < offB[j].p) offB.splice(j, 1);
@@ -829,12 +830,23 @@ const SMC = (() => {
         if (t.length) {
           // mức sâu nhất của cú quét ($ và EQH/EQL có giá; trendline không) — để ẩn nhãn khi mức bị phá (20/11 21:14)
           const lv = t.filter((x) => !/trendline/.test(x)).map((x) => parseFloat((x.match(/([\d.]+)\s*$/) || [])[1])).filter((x) => isFinite(x));
-          res.sweepsShow.push({ i, side, txt: t.join(" + "), lvl: lv.length ? (side === "top" ? Math.max(...lv) : Math.min(...lv)) : null });
+          const tlp = L.sw[i] && t.some((x) => /trendline/.test(x)) ? (side === "top" ? L.sw[i].bearTl : L.sw[i].bullTl) : null;
+          res.sweepsShow.push({ i, side, txt: t.join(" + "), lvl: lv.length ? (side === "top" ? Math.max(...lv) : Math.min(...lv)) : null, tl: tlp && tlp.b.i > tlp.a.i ? tlp : null });
         }
       }
     }
     // 20/11 21:14 (người dùng): mức đã bị giá ĐÓNG CỬA phá qua sau cú quét → cú quét hết giá trị → ẩn nhãn ✕ (chỉ $/EQH/EQL; TL giữ)
-    res.sweepsShow = res.sweepsShow.filter((w) => { if (w.lvl == null) return true; for (let j = w.i + 1; j < c.length; j++) if (w.side === "top" ? c[j].close > w.lvl : c[j].close < w.lvl) return false; return true; });
+    // 21:18: cả ✕TL — trendline bị phá khi giá đóng cửa vượt giá trị kéo dài của nó; nhãn gộp chỉ ẩn khi MỌI phần đều đã bị phá
+    res.sweepsShow = res.sweepsShow.filter((w) => {
+      if (w.lvl == null && !w.tl) return true;
+      const up = w.side === "top", k = w.tl ? (w.tl.b.p - w.tl.a.p) / (w.tl.b.i - w.tl.a.i) : 0;
+      for (let j = w.i + 1; j < c.length; j++) {
+        const brL = w.lvl == null || (up ? c[j].close > w.lvl : c[j].close < w.lvl);
+        const tv = w.tl ? w.tl.b.p + k * (j - w.tl.b.i) : null, brT = !w.tl || (up ? c[j].close > tv : c[j].close < tv);
+        if (brL && brT) return false;
+      }
+      return true;
+    });
     if (opt.tfSec === 300 || opt.tfSec === 900) res.kb4 = kb4Setup(c, ms, h4c, sec, opt);
     if (res.kb4 && res.kb4.side && !res.kb4.noise) { const sg0 = res.kb4.side === "BUY" ? 1 : -1; res.kb4.more = kb4More(c, ms, sg0, opt, res.kb4.hi != null ? res.kb4 : null); }
     if (opt.tfSec === 900) res.kb8 = kb8Setup(c, ms, opt);
