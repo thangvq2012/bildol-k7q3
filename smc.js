@@ -717,6 +717,10 @@ const SMC = (() => {
     const evs = [], sws = [];
     evs.sweeps = sws; // ✕$ (20/11): râu quét ĐÁY/ĐỈNH MINOR còn sống rồi đóng cửa quay lại, mỗi mức tính lần quét đầu
     let s = 0, maj = null, majI = null, stk = [], ext = null, extI = null, pull = Infinity, pullI = null, pHi = -Infinity, pHiI = null;
+    // NHỊP PHỤ (20/11 20:40): sau cú False ChoCH đầu tiên, các cú phá tiếp theo cùng chiều đó xét Minor/Major theo OF của nhịp phụ
+    // (hệ giá trị nhân -s). sstk[0] = đỉnh chính lúc bắt đầu (hoặc đỉnh hồi của cú Major phụ). Kết thúc khi phá đỉnh chính
+    // (BOS chính) hoặc thành cấu trúc chính khi CHoCH.
+    let sb = false, sstk = [], sx = null;
     for (let i = 1; i < c.length; i++) {
       const k = c[i], m = ms[i] || {};
       if (s === 0) {
@@ -733,6 +737,11 @@ const SMC = (() => {
       if (L < pc) { pc = L; pcI = i; ph = -Infinity; phI = null; } else if (H > ph) { ph = H; phI = i; }
       // ✕$ chỉ ở đáy minor (đáy hồi của cú BOS Minor, chưa khai thác đủ 50% — giá hay quay lại quét); bỏ qua đáy major (phần tử 0)
       for (let j = 1; j < stk.length; j++) { const e = stk[j]; if (!e.tk && L < e.p && C > e.p) { e.tk = true; sws.push({ i, side: s === 1 ? "bot" : "top", p: s * e.p, from: e.i, txt: `${s === 1 ? "đáy" : "đỉnh"} minor ${(s * e.p).toFixed(2)}` }); } }
+      if (sb) {
+        // ✕$ ở đỉnh minor của nhịp phụ + OF phụ chết khi đóng cửa vượt gốc
+        for (let j = 1; j < sstk.length; j++) { const e = sstk[j]; if (!e.tk && -H < e.p && -C > e.p) { e.tk = true; sws.push({ i, side: s === 1 ? "top" : "bot", p: -s * e.p, from: e.i, txt: `${s === 1 ? "đỉnh" : "đáy"} minor ${(-s * e.p).toFixed(2)}` }); } }
+        while (sstk.length > 1 && -C < sstk[sstk.length - 1].p) sstk.pop();
+      }
       const evDir = m.ev ? (m.ev > 0 ? 1 : -1) : 0;
       const chA = C < maj;
       let r = null;
@@ -745,9 +754,11 @@ const SMC = (() => {
       if (chA || (evDir === -s && r >= 0.5)) {
         // CHoCH thật → đảo chiều; mọi giá trị đổi dấu sang hệ của chiều mới
         evs.push({ i, kind: "CHoCH", dir: -s, p: chA ? s * maj : m.brk, from: chA ? majI : m.brkI, r, of: chA ? null : [s * stk[stk.length - 1].p, s * ext], maj: s * maj });
-        const nMaj = -ext, nMajI = extI, nExt = -pc, nExtI = pcI, nPull = phI == null ? Infinity : -ph, nPullI = phI;
-        s = -s; maj = nMaj; majI = nMajI; stk = [{ p: maj, i: majI }]; ext = nExt; extI = nExtI;
-        pull = nPull; pullI = nPullI; pHi = -Infinity; pHiI = null;
+        // nhịp phụ (nếu có) trở thành cấu trúc chính, giữ các đỉnh minor/major của nó
+        const nStk = sb ? sstk : [{ p: -ext, i: extI }];
+        const nExt = -pc, nExtI = pcI, nPull = phI == null ? Infinity : -ph, nPullI = phI;
+        s = -s; stk = nStk; maj = stk[0].p; majI = stk[0].i; ext = nExt; extI = nExtI;
+        pull = nPull; pullI = nPullI; pHi = -Infinity; pHiI = null; sb = false; sstk = []; sx = null;
         continue;
       }
       // mức phá lệch đỉnh chính ≤ eqTol vẫn là phá đỉnh chính (A.7 "bằng nhau": smcCore giữ mốc ở đỉnh đầu)
@@ -757,10 +768,23 @@ const SMC = (() => {
         const O = stk[stk.length - 1], T = ext, pct = T - O.p > 0 ? (T - P) / (T - O.p) : 1;
         if (pct >= 0.5) { maj = P; majI = PI; stk = [{ p: P, i: PI }]; } else stk.push({ p: P, i: PI });
         evs.push({ i, kind: pct >= 0.5 ? "Major" : "Minor", dir: s, p: m.brk, from: m.brkI, pct, of: [s * O.p, s * T], pb: s * P });
-        ext = H; extI = i; pull = Infinity; pullI = null; pHi = -Infinity; pHiI = null;
+        ext = H; extI = i; pull = Infinity; pullI = null; pHi = -Infinity; pHiI = null; sb = false; sstk = []; sx = null;
         continue;
       }
-      if (evDir === -s) evs.push({ i, kind: "False ChoCH", fake: true, dir: -s, p: m.brk, from: m.brkI, r, of: [s * stk[stk.length - 1].p, s * ext], maj: s * maj });
+      let sReset = false;
+      if (evDir === -s && !sb) {
+        // cú phá ngược chiều ĐẦU TIÊN ở đáy minor → False ChoCH, mở nhịp phụ (gốc = đỉnh chính)
+        evs.push({ i, kind: "False ChoCH", fake: true, dir: -s, p: m.brk, from: m.brkI, r, of: [s * stk[stk.length - 1].p, s * ext], maj: s * maj });
+        sb = true; sstk = [{ p: -ext, i: extI }]; sx = -pc; sReset = true;
+      } else if (evDir === -s && sb && -s * m.brk >= sx - eqTol - 1e-9) {
+        // cú phá thứ 2 trở đi cùng chiều nhịp phụ → Minor/Major theo OF phụ (gốc trong cùng → đáy thấp nhất, hồi = LH/HL của structure())
+        const sp = s === 1 ? (m.oTop != null ? -m.oTop : null) : m.oBot, P = sp != null ? sp : -ph, PI = sp != null ? (s === 1 ? m.oTopI : m.oBotI) : phI;
+        const O = sstk[sstk.length - 1], pct = sx - O.p > 0 ? (sx - P) / (sx - O.p) : 1;
+        if (pct >= 0.5) sstk = [{ p: P, i: PI }]; else sstk.push({ p: P, i: PI });
+        evs.push({ i, kind: pct >= 0.5 ? "Major" : "Minor", dir: -s, p: m.brk, from: m.brkI, pct, of: [-s * O.p, -s * sx], pb: -s * P, sub: true });
+        sx = -L; sReset = true;
+      }
+      if (sb && !sReset && -L > sx) sx = -L;
       if (H > ext) { ext = H; extI = i; pull = Infinity; pullI = null; pHi = -Infinity; pHiI = null; }
       else { pull = pc; pullI = pcI; pHi = ph; pHiI = phI; }
     }
