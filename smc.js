@@ -826,9 +826,15 @@ const SMC = (() => {
       for (const side of ["top", "bot"]) {
         const raw = L.sw[i] ? (side === "top" ? L.sw[i].bear : L.sw[i].bull) || [] : [];
         const t = [...MSE.sweeps.filter((w) => w.i === i && w.side === side).map((w) => w.txt), ...raw.filter((x) => !/gần nhất/.test(x))];
-        if (t.length) res.sweepsShow.push({ i, side, txt: t.join(" + ") });
+        if (t.length) {
+          // mức sâu nhất của cú quét ($ và EQH/EQL có giá; trendline không) — để ẩn nhãn khi mức bị phá (20/11 21:14)
+          const lv = t.filter((x) => !/trendline/.test(x)).map((x) => parseFloat((x.match(/([\d.]+)\s*$/) || [])[1])).filter((x) => isFinite(x));
+          res.sweepsShow.push({ i, side, txt: t.join(" + "), lvl: lv.length ? (side === "top" ? Math.max(...lv) : Math.min(...lv)) : null });
+        }
       }
     }
+    // 20/11 21:14 (người dùng): mức đã bị giá ĐÓNG CỬA phá qua sau cú quét → cú quét hết giá trị → ẩn nhãn ✕ (chỉ $/EQH/EQL; TL giữ)
+    res.sweepsShow = res.sweepsShow.filter((w) => { if (w.lvl == null) return true; for (let j = w.i + 1; j < c.length; j++) if (w.side === "top" ? c[j].close > w.lvl : c[j].close < w.lvl) return false; return true; });
     if (opt.tfSec === 300 || opt.tfSec === 900) res.kb4 = kb4Setup(c, ms, h4c, sec, opt);
     if (res.kb4 && res.kb4.side && !res.kb4.noise) { const sg0 = res.kb4.side === "BUY" ? 1 : -1; res.kb4.more = kb4More(c, ms, sg0, opt, res.kb4.hi != null ? res.kb4 : null); }
     if (opt.tfSec === 900) res.kb8 = kb8Setup(c, ms, opt);
