@@ -600,9 +600,11 @@ function drawSMC(ctx, plotW, plotH) {
     if (!c[e.i]) continue;
     const x = ts.timeToCoordinate(c[e.i].time + TZ); if (x == null || x < 0 || x > plotW) continue;
     const y = Yr(e.p); if (y == null || y < 0 || y > plotH) continue;
-    if (e.kind === "BOS" || e.kind === "CHoCH" || e.kind === "False ChoCH") {
-      const col = e.fake ? "#f2b84b" : e.dir > 0 ? C.up : C.down, x0 = c[e.from] ? X(c[e.from].time) : x;
-      hline(ctx, y, x0, x, col, 1, e.kind === "BOS" ? [4, 3] : e.fake ? [1, 2] : [], 0.9);
+    if (e.kind === "Major" || e.kind === "Minor" || e.kind === "CHoCH" || e.kind === "False ChoCH") {
+      // 20/11: BOS tách Major (xanh dương) / Minor (đỏ — OF chưa khai thác đủ 50%, giá hay quay lại)
+      const isB = e.kind === "Major" || e.kind === "Minor";
+      const col = e.fake ? "#f2b84b" : e.kind === "Major" ? "#4fc3f7" : e.kind === "Minor" ? "#ff5252" : e.dir > 0 ? C.up : C.down, x0 = c[e.from] ? X(c[e.from].time) : x;
+      hline(ctx, y, x0, x, col, 1, isB ? [4, 3] : e.fake ? [1, 2] : [], 0.9);
       ctx.fillStyle = col; ctx.textBaseline = e.dir > 0 ? "bottom" : "top"; ctx.fillText(e.kind, (x0 + x) / 2, y + (e.dir > 0 ? -2 : 2));
     } else {
       ctx.fillStyle = e.side === "top" ? C.down : C.up; ctx.textBaseline = e.side === "top" ? "bottom" : "top";

@@ -704,6 +704,56 @@ const SMC = (() => {
 
   // ───── phân tích đầy đủ: khung chart + H4, cả hai chiều ─────
   // opt: { oteLo, oteHi, eqTol, trendline, sweepWin, slBuf, tol, expiryH4, tfName, sessionOk(t), levels: {cw,pw,flip} }
+  // ── Cấu trúc CHÍNH theo OF (luật người dùng/Mr.Nam chốt 20/11, CHỈ HIỂN THỊ, CHƯA kiểm chứng) ──
+  // Trên nền sự kiện phá cấu trúc của structure(). Cấu trúc tăng (giảm đối xứng):
+  //  · OF = nhịp từ một đáy (gốc) lên đỉnh. Gốc còn sống khi chưa có nến ĐÓNG CỬA dưới nó. Gốc trong cùng = gốc mới nhất còn sống.
+  //  · Phá đỉnh chính (đỉnh cao nhất kể từ lần phá chính trước) = BOS. Nhịp hồi trước khi phá (râu thấp nhất từ sau đỉnh tới cây phá)
+  //    về ≥50% của OF (gốc trong cùng → đỉnh) → "Major", đáy hồi thành ĐÁY MAJOR (xoá các gốc cũ); chưa tới 50% → "Minor", đáy hồi thành gốc minor.
+  //  · Đóng cửa dưới ĐÁY MAJOR gần nhất → CHoCH thật (đảo chiều; đỉnh cao nhất thành đỉnh major của cấu trúc giảm).
+  //  · structure() báo phá ngược chiều mà chưa thủng đáy major → "False ChoCH".
+  //  · structure() báo phá cùng chiều nhưng mức phá thấp hơn đỉnh chính (đỉnh hồi bên trong) → không vẽ nhãn.
+  function mainStruct(c, ms) {
+    const evs = [];
+    let s = 0, maj = null, majI = null, stk = [], ext = null, extI = null, pull = Infinity, pullI = null, pHi = -Infinity, pHiI = null;
+    for (let i = 1; i < c.length; i++) {
+      const k = c[i], m = ms[i] || {};
+      if (s === 0) {
+        if (!m.ev || m.oBot == null || m.oTop == null) continue;
+        s = m.ev > 0 ? 1 : -1;
+        maj = s === 1 ? m.oBot : -m.oTop; majI = s === 1 ? m.oBotI : m.oTopI; stk = [{ p: maj, i: majI }];
+        ext = s === 1 ? k.high : -k.low; extI = i; pull = Infinity; pullI = null; pHi = -Infinity; pHiI = null;
+        evs.push({ i, kind: Math.abs(m.ev) === 2 ? "CHoCH" : "Major", dir: s, p: m.brk, from: m.brkI });
+        continue;
+      }
+      const H = s === 1 ? k.high : -k.low, L = s === 1 ? k.low : -k.high, C = s * k.close;
+      // râu hồi thấp nhất kể từ đỉnh (tính cả cây hiện tại) + đỉnh cao nhất kể từ râu hồi đó
+      let pc = pull, pcI = pullI, ph = pHi, phI = pHiI;
+      if (L < pc) { pc = L; pcI = i; ph = -Infinity; phI = null; } else if (H > ph) { ph = H; phI = i; }
+      const evDir = m.ev ? (m.ev > 0 ? 1 : -1) : 0;
+      if (C < maj) {
+        // CHoCH thật: thủng đáy major → đảo chiều; mọi giá trị đổi dấu sang hệ của chiều mới
+        evs.push({ i, kind: "CHoCH", dir: -s, p: s * maj, from: majI });
+        const nMaj = -ext, nMajI = extI, nExt = -pc, nExtI = pcI, nPull = phI == null ? Infinity : -ph, nPullI = phI;
+        s = -s; maj = nMaj; majI = nMajI; stk = [{ p: maj, i: majI }]; ext = nExt; extI = nExtI;
+        pull = nPull; pullI = nPullI; pHi = -Infinity; pHiI = null;
+        continue;
+      }
+      // OF chết khi đóng cửa dưới gốc (gốc major ở đáy mảng không bao giờ bị xoá ở đây vì C ≥ maj)
+      while (stk.length > 1 && C < stk[stk.length - 1].p) stk.pop();
+      if (evDir === s && s * m.brk >= ext - 1e-9) {
+        const O = stk[stk.length - 1], T = ext, pct = T - O.p > 0 ? (T - pc) / (T - O.p) : 1;
+        if (pct >= 0.5) { maj = pc; majI = pcI; stk = [{ p: pc, i: pcI }]; } else stk.push({ p: pc, i: pcI });
+        evs.push({ i, kind: pct >= 0.5 ? "Major" : "Minor", dir: s, p: m.brk, from: m.brkI, pct, of: [s * O.p, s * T] });
+        ext = H; extI = i; pull = Infinity; pullI = null; pHi = -Infinity; pHiI = null;
+        continue;
+      }
+      if (evDir === -s) evs.push({ i, kind: "False ChoCH", fake: true, dir: -s, p: m.brk, from: m.brkI });
+      if (H > ext) { ext = H; extI = i; pull = Infinity; pullI = null; pHi = -Infinity; pHiI = null; }
+      else { pull = pc; pullI = pcI; pHi = ph; pHiI = phI; }
+    }
+    return evs;
+  }
+
   function analyze(c, h4c, sec, opt) {
     const res = { ms: [], events: [], sweeps: [], forms: [], liqH: [], liqL: [], tl: null, orders: [], frame: null, struct: "", plan: [] };
     if (c.length < 10 || h4c.length < 10) return res;
@@ -723,30 +773,13 @@ const SMC = (() => {
       o.time = c[o.created].time; o.i = o.created; o.type2 = o.type;
     }
     // sự kiện cấu trúc + thanh khoản (dữ liệu thật) để vẽ
-    // ChoCH giả (19/11, theo lý thuyết OF/ROF của Mr.Nam, CHƯA kiểm chứng): 1 OF (đỉnh→đáy/đáy→đỉnh) coi là
-    // "khai thác đủ" khi giá pull về ≥50% Fibo của OF rồi mới phá ngược lại đỉnh/đáy gốc. Nếu CHoCH xảy ra (phá
-    // đỉnh/đáy Minor) khi OF hiện tại CHƯA pull đủ 50% → đó là ChoCH giả, giá thường quay lại xu hướng cũ; các cú
-    // phá tiếp theo CÙNG chiều OF gốc được gắn lại là BOS dù smcCore tưởng là đảo chiều (phải khớp Pine).
-    let ofDir = 0, ofFar = null, ofNear = null;
-    for (let i = 1; i < c.length; i++) {
+    // BOS/CHoCH: cấu trúc CHÍNH theo OF (Major/Minor/False ChoCH/CHoCH) — mainStruct() ở trên, luật chốt 20/11 (phải khớp Pine)
+    const MSE = mainStruct(c, ms);
+    for (let i = 1, q = 0; i < c.length; i++) {
       const m = ms[i];
       if (m.nTop) res.events.push({ i: m.oTopI, kind: m.topHH ? "HH" : "LH", p: m.oTop, side: "top" });
       if (m.nBot) res.events.push({ i: m.oBotI, kind: m.botHL ? "HL" : "LL", p: m.oBot, side: "bot" });
-      if (m.ev) {
-        const dirNow = m.ev > 0 ? 1 : -1;
-        let chochFake = false, ofForceBOS = false;
-        if (ofDir === 0) {
-          ofDir = dirNow; ofFar = dirNow === 1 ? m.oBot : m.oTop; ofNear = dirNow === 1 ? m.oTop : m.oBot;
-        } else if (dirNow === ofDir) {
-          ofNear = dirNow === 1 ? m.oTop : m.oBot; ofForceBOS = true;
-        } else {
-          const pct = ofDir === -1 ? (m.brk - ofNear) / (ofFar - ofNear) : (ofNear - m.brk) / (ofNear - ofFar);
-          if (!isFinite(pct) || pct >= 0.5) { ofDir = dirNow; ofFar = dirNow === 1 ? m.oBot : m.oTop; ofNear = dirNow === 1 ? m.oTop : m.oBot; }
-          else chochFake = true;
-        }
-        const isChoch = Math.abs(m.ev) === 2 && !ofForceBOS;
-        res.events.push({ i, kind: isChoch ? (chochFake ? "False ChoCH" : "CHoCH") : "BOS", fake: isChoch && chochFake, dir: Math.sign(m.ev), p: m.brk, from: m.brkI });
-      }
+      while (q < MSE.length && MSE[q].i <= i) res.events.push(MSE[q++]);
       if (L.sw[i]) { if (L.sw[i].bear) res.sweeps.push({ i, side: "top", txt: L.sw[i].bear.join(" + ") }); if (L.sw[i].bull) res.sweeps.push({ i, side: "bot", txt: L.sw[i].bull.join(" + ") }); }
     }
     if (opt.tfSec === 300 || opt.tfSec === 900) res.kb4 = kb4Setup(c, ms, h4c, sec, opt);
@@ -829,6 +862,6 @@ const SMC = (() => {
     return Math.max(d0 - Math.ceil((nBars * tfSec * 1.4) / day) * day, h4From);
   }
 
-  return { kb8Setup, h4Noise, structure, liquidity, oldLevels, kb1v3, kb1v3Fill, kb4, kb4Setup, formMarks, analyze, htfAt, closedIdx, fxOpen, bucketOf, aggregate, ltfStart, nyOffset, setH24 };
+  return { kb8Setup, h4Noise, structure, mainStruct, liquidity, oldLevels, kb1v3, kb1v3Fill, kb4, kb4Setup, formMarks, analyze, htfAt, closedIdx, fxOpen, bucketOf, aggregate, ltfStart, nyOffset, setH24 };
 })();
 if (typeof module !== "undefined") module.exports = SMC;
