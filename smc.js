@@ -714,7 +714,8 @@ const SMC = (() => {
   //  · structure() báo phá ngược chiều ở đáy hồi chưa tới 50% (đáy minor) → "False ChoCH".
   //  · structure() báo phá cùng chiều nhưng mức phá thấp hơn đỉnh chính (đỉnh hồi bên trong) → không vẽ nhãn.
   function mainStruct(c, ms, eqTol = 1.5) {
-    const evs = [];
+    const evs = [], sws = [];
+    evs.sweeps = sws; // ✕$ (20/11): râu quét ĐÁY/ĐỈNH MINOR còn sống rồi đóng cửa quay lại, mỗi mức tính lần quét đầu
     let s = 0, maj = null, majI = null, stk = [], ext = null, extI = null, pull = Infinity, pullI = null, pHi = -Infinity, pHiI = null;
     for (let i = 1; i < c.length; i++) {
       const k = c[i], m = ms[i] || {};
@@ -730,6 +731,8 @@ const SMC = (() => {
       // râu hồi thấp nhất kể từ đỉnh (tính cả cây hiện tại) + đỉnh cao nhất kể từ râu hồi đó
       let pc = pull, pcI = pullI, ph = pHi, phI = pHiI;
       if (L < pc) { pc = L; pcI = i; ph = -Infinity; phI = null; } else if (H > ph) { ph = H; phI = i; }
+      // ✕$ chỉ ở đáy minor (đáy hồi của cú BOS Minor, chưa khai thác đủ 50% — giá hay quay lại quét); bỏ qua đáy major (phần tử 0)
+      for (let j = 1; j < stk.length; j++) { const e = stk[j]; if (!e.tk && L < e.p && C > e.p) { e.tk = true; sws.push({ i, side: s === 1 ? "bot" : "top", p: s * e.p, from: e.i, txt: `${s === 1 ? "đáy" : "đỉnh"} minor ${(s * e.p).toFixed(2)}` }); } }
       const evDir = m.ev ? (m.ev > 0 ? 1 : -1) : 0;
       const chA = C < maj;
       let r = null;
@@ -765,7 +768,7 @@ const SMC = (() => {
   }
 
   function analyze(c, h4c, sec, opt) {
-    const res = { ms: [], events: [], sweeps: [], forms: [], liqH: [], liqL: [], tl: null, orders: [], frame: null, struct: "", plan: [] };
+    const res = { ms: [], events: [], sweeps: [], sweepsShow: [], forms: [], liqH: [], liqL: [], tl: null, orders: [], frame: null, struct: "", plan: [] };
     if (c.length < 10 || h4c.length < 10) return res;
     const EQT = opt.eqTol ?? 1.5, ms = structure(c, EQT), h4s = structure(h4c, EQT), L = liquidity(c, ms, opt), H = liquidity(h4c, h4s, opt);
     const cm = mirror(c), hm = mirror(h4c), msM = structure(cm, EQT), h4sM = structure(hm, EQT);
@@ -791,6 +794,13 @@ const SMC = (() => {
       if (m.nBot) res.events.push({ i: m.oBotI, kind: m.botHL ? "HL" : "LL", p: m.oBot, side: "bot" });
       while (q < MSE.length && MSE[q].i <= i) res.events.push(MSE[q++]);
       if (L.sw[i]) { if (L.sw[i].bear) res.sweeps.push({ i, side: "top", txt: L.sw[i].bear.join(" + ") }); if (L.sw[i].bull) res.sweeps.push({ i, side: "bot", txt: L.sw[i].bull.join(" + ") }); }
+      // nhãn ✕ để VẼ (20/11): bỏ loại "gần nhất" (đỉnh/đáy tạm), thay bằng quét đáy/đỉnh minor; EQH/EQL, trendline giữ nguyên.
+      // res.sweeps (dữ liệu gốc) không đổi vì KB2/HEDGE đang dùng.
+      for (const side of ["top", "bot"]) {
+        const raw = L.sw[i] ? (side === "top" ? L.sw[i].bear : L.sw[i].bull) || [] : [];
+        const t = [...MSE.sweeps.filter((w) => w.i === i && w.side === side).map((w) => w.txt), ...raw.filter((x) => !/gần nhất/.test(x))];
+        if (t.length) res.sweepsShow.push({ i, side, txt: t.join(" + ") });
+      }
     }
     if (opt.tfSec === 300 || opt.tfSec === 900) res.kb4 = kb4Setup(c, ms, h4c, sec, opt);
     if (res.kb4 && res.kb4.side && !res.kb4.noise) { const sg0 = res.kb4.side === "BUY" ? 1 : -1; res.kb4.more = kb4More(c, ms, sg0, opt, res.kb4.hi != null ? res.kb4 : null); }

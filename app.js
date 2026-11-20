@@ -729,9 +729,10 @@ function setMarkers() {
     const c = S.candles;
     // nến quét thanh khoản (chỉ tại 4 loại thanh khoản của khung này, xét khi nến đã đóng)
     // mã loại: $ = đỉnh/đáy gần nhất · EQH/EQL = đỉnh/đáy bằng nhau · TL = trendline
-    const swCode = (t, top) => [/gần nhất/.test(t) && "$", /bằng nhau/.test(t) && (top ? "EQH" : "EQL"), /trendline/.test(t) && "TL"].filter(Boolean).join("+");
-    for (const w of S.smc.oldSweeps || []) if (c[w.i] && !S.smc.sweeps.some((q) => q.i === w.i && q.side === w.side)) mk.push({ time: c[w.i].time + TZ, position: w.side === "top" ? "aboveBar" : "belowBar", color: C.mag, shape: "circle", size: 0.5, text: "✕ cũ" });
-    for (const w of S.smc.sweeps) if (c[w.i]) mk.push({ time: c[w.i].time + TZ, position: w.side === "top" ? "aboveBar" : "belowBar", color: C.mag, shape: "circle", size: 0.5, text: "✕ " + swCode(w.txt, w.side === "top") });
+    const swCode = (t, top) => [/gần nhất|minor/.test(t) && "$", /bằng nhau/.test(t) && (top ? "EQH" : "EQL"), /trendline/.test(t) && "TL"].filter(Boolean).join("+");
+    const SWV = S.smc.sweepsShow || S.smc.sweeps; // 20/11: ✕$ chỉ khi quét đáy/đỉnh minor
+    for (const w of S.smc.oldSweeps || []) if (c[w.i] && !SWV.some((q) => q.i === w.i && q.side === w.side)) mk.push({ time: c[w.i].time + TZ, position: w.side === "top" ? "aboveBar" : "belowBar", color: C.mag, shape: "circle", size: 0.5, text: "✕ cũ" });
+    for (const w of SWV) if (c[w.i]) mk.push({ time: c[w.i].time + TZ, position: w.side === "top" ? "aboveBar" : "belowBar", color: C.mag, shape: "circle", size: 0.5, text: "✕ " + swCode(w.txt, w.side === "top") });
     // nến tạo (▼/▲ nhỏ) và nến xác nhận (■) của đỉnh/đáy thuộc cấu trúc khung này; mờ = đỉnh/đáy tạm đang chờ
     for (const F of S.smc.forms || []) {
       const top = F.side === "top", col = top ? C.down : C.up, cc = F.pending ? col + "99" : col, pos = top ? "aboveBar" : "belowBar";
