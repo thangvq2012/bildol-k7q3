@@ -755,7 +755,8 @@ const SMC = (() => {
         // CHoCH thật → đảo chiều; mọi giá trị đổi dấu sang hệ của chiều mới
         evs.push({ i, kind: "CHoCH", dir: -s, p: chA ? s * maj : m.brk, from: chA ? majI : m.brkI, r, of: chA ? null : [s * stk[stk.length - 1].p, s * ext], maj: s * maj });
         // nhịp phụ (nếu có) trở thành cấu trúc chính, giữ các đỉnh minor/major của nó
-        const nStk = sb ? sstk : [{ p: -ext, i: extI }];
+        // mốc major mới = cực trị cũ (vd. đáy thấp nhất 3514,54), trừ khi nhịp phụ đã có cú Major (sstk[0] = đỉnh hồi major của nó)
+        const nStk = sb ? (sstk[0].mj ? sstk : [{ p: -ext, i: extI }, ...sstk.slice(1)]) : [{ p: -ext, i: extI }];
         const nExt = -pc, nExtI = pcI, nPull = phI == null ? Infinity : -ph, nPullI = phI;
         s = -s; stk = nStk; maj = stk[0].p; majI = stk[0].i; ext = nExt; extI = nExtI;
         pull = nPull; pullI = nPullI; pHi = -Infinity; pHiI = null; sb = false; sstk = []; sx = null;
@@ -780,7 +781,7 @@ const SMC = (() => {
         // cú phá thứ 2 trở đi cùng chiều nhịp phụ → Minor/Major theo OF phụ (gốc trong cùng → đáy thấp nhất, hồi = LH/HL của structure())
         const sp = s === 1 ? (m.oTop != null ? -m.oTop : null) : m.oBot, P = sp != null ? sp : -ph, PI = sp != null ? (s === 1 ? m.oTopI : m.oBotI) : phI;
         const O = sstk[sstk.length - 1], pct = sx - O.p > 0 ? (sx - P) / (sx - O.p) : 1;
-        if (pct >= 0.5) sstk = [{ p: P, i: PI }]; else sstk.push({ p: P, i: PI });
+        if (pct >= 0.5) sstk = [{ p: P, i: PI, mj: true }]; else sstk.push({ p: P, i: PI });
         evs.push({ i, kind: pct >= 0.5 ? "Major" : "Minor", dir: -s, p: m.brk, from: m.brkI, pct, of: [-s * O.p, -s * sx], pb: -s * P, sub: true });
         sx = -L; sReset = true;
       }
