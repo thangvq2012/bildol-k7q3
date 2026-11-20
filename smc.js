@@ -709,10 +709,11 @@ const SMC = (() => {
   //  · OF = nhịp từ một đáy (gốc) lên đỉnh. Gốc còn sống khi chưa có nến ĐÓNG CỬA dưới nó. Gốc trong cùng = gốc mới nhất còn sống.
   //  · Phá đỉnh chính (đỉnh cao nhất kể từ lần phá chính trước) = BOS. Nhịp hồi trước khi phá (râu thấp nhất từ sau đỉnh tới cây phá)
   //    về ≥50% của OF (gốc trong cùng → đỉnh) → "Major", đáy hồi thành ĐÁY MAJOR (xoá các gốc cũ); chưa tới 50% → "Minor", đáy hồi thành gốc minor.
-  //  · Đóng cửa dưới ĐÁY MAJOR gần nhất → CHoCH thật (đảo chiều; đỉnh cao nhất thành đỉnh major của cấu trúc giảm).
-  //  · structure() báo phá ngược chiều mà chưa thủng đáy major → "False ChoCH".
+  //  · CHoCH thật (đảo chiều; đỉnh cao nhất thành đỉnh major của cấu trúc giảm) khi: đóng cửa dưới ĐÁY MAJOR gần nhất, HOẶC
+  //    structure() báo phá một đáy mà đáy đó đã khai thác ≥50% OF trong cùng còn sống (đáy major — ca 13:00 20/11).
+  //  · structure() báo phá ngược chiều ở đáy hồi chưa tới 50% (đáy minor) → "False ChoCH".
   //  · structure() báo phá cùng chiều nhưng mức phá thấp hơn đỉnh chính (đỉnh hồi bên trong) → không vẽ nhãn.
-  function mainStruct(c, ms) {
+  function mainStruct(c, ms, eqTol = 1.5) {
     const evs = [];
     let s = 0, maj = null, majI = null, stk = [], ext = null, extI = null, pull = Infinity, pullI = null, pHi = -Infinity, pHiI = null;
     for (let i = 1; i < c.length; i++) {
@@ -730,24 +731,33 @@ const SMC = (() => {
       let pc = pull, pcI = pullI, ph = pHi, phI = pHiI;
       if (L < pc) { pc = L; pcI = i; ph = -Infinity; phI = null; } else if (H > ph) { ph = H; phI = i; }
       const evDir = m.ev ? (m.ev > 0 ? 1 : -1) : 0;
-      if (C < maj) {
-        // CHoCH thật: thủng đáy major → đảo chiều; mọi giá trị đổi dấu sang hệ của chiều mới
-        evs.push({ i, kind: "CHoCH", dir: -s, p: s * maj, from: majI });
+      const chA = C < maj;
+      let r = null;
+      if (!chA) {
+        // OF chết khi đóng cửa dưới gốc (gốc major ở đáy mảng không bao giờ bị xoá ở đây vì C ≥ maj)
+        while (stk.length > 1 && C < stk[stk.length - 1].p) stk.pop();
+        // phá ngược chiều: mức bị phá đã khai thác ≥50% OF trong cùng còn sống (gốc → cực trị) → đó là đáy MAJOR → CHoCH
+        if (evDir === -s) { const O = stk[stk.length - 1].p; r = ext - O > 0 ? (ext - s * m.brk) / (ext - O) : 1; }
+      }
+      if (chA || (evDir === -s && r >= 0.5)) {
+        // CHoCH thật → đảo chiều; mọi giá trị đổi dấu sang hệ của chiều mới
+        evs.push({ i, kind: "CHoCH", dir: -s, p: chA ? s * maj : m.brk, from: chA ? majI : m.brkI, r, of: chA ? null : [s * stk[stk.length - 1].p, s * ext], maj: s * maj });
         const nMaj = -ext, nMajI = extI, nExt = -pc, nExtI = pcI, nPull = phI == null ? Infinity : -ph, nPullI = phI;
         s = -s; maj = nMaj; majI = nMajI; stk = [{ p: maj, i: majI }]; ext = nExt; extI = nExtI;
         pull = nPull; pullI = nPullI; pHi = -Infinity; pHiI = null;
         continue;
       }
-      // OF chết khi đóng cửa dưới gốc (gốc major ở đáy mảng không bao giờ bị xoá ở đây vì C ≥ maj)
-      while (stk.length > 1 && C < stk[stk.length - 1].p) stk.pop();
-      if (evDir === s && s * m.brk >= ext - 1e-9) {
-        const O = stk[stk.length - 1], T = ext, pct = T - O.p > 0 ? (T - pc) / (T - O.p) : 1;
-        if (pct >= 0.5) { maj = pc; majI = pcI; stk = [{ p: pc, i: pcI }]; } else stk.push({ p: pc, i: pcI });
-        evs.push({ i, kind: pct >= 0.5 ? "Major" : "Minor", dir: s, p: m.brk, from: m.brkI, pct, of: [s * O.p, s * T] });
+      // mức phá lệch đỉnh chính ≤ eqTol vẫn là phá đỉnh chính (A.7 "bằng nhau": smcCore giữ mốc ở đỉnh đầu)
+      if (evDir === s && s * m.brk >= ext - eqTol - 1e-9) {
+        // đáy hồi = đúng HL/LH mà structure() vừa đánh dấu (cùng mốc nó dùng để báo phá ngược chiều); thiếu thì dùng râu thấp nhất
+        const sp = s === 1 ? m.oBot : m.oTop != null ? -m.oTop : null, P = sp != null ? sp : pc, PI = sp != null ? (s === 1 ? m.oBotI : m.oTopI) : pcI;
+        const O = stk[stk.length - 1], T = ext, pct = T - O.p > 0 ? (T - P) / (T - O.p) : 1;
+        if (pct >= 0.5) { maj = P; majI = PI; stk = [{ p: P, i: PI }]; } else stk.push({ p: P, i: PI });
+        evs.push({ i, kind: pct >= 0.5 ? "Major" : "Minor", dir: s, p: m.brk, from: m.brkI, pct, of: [s * O.p, s * T], pb: s * P });
         ext = H; extI = i; pull = Infinity; pullI = null; pHi = -Infinity; pHiI = null;
         continue;
       }
-      if (evDir === -s) evs.push({ i, kind: "False ChoCH", fake: true, dir: -s, p: m.brk, from: m.brkI });
+      if (evDir === -s) evs.push({ i, kind: "False ChoCH", fake: true, dir: -s, p: m.brk, from: m.brkI, r, of: [s * stk[stk.length - 1].p, s * ext], maj: s * maj });
       if (H > ext) { ext = H; extI = i; pull = Infinity; pullI = null; pHi = -Infinity; pHiI = null; }
       else { pull = pc; pullI = pcI; pHi = ph; pHiI = phI; }
     }
@@ -774,7 +784,7 @@ const SMC = (() => {
     }
     // sự kiện cấu trúc + thanh khoản (dữ liệu thật) để vẽ
     // BOS/CHoCH: cấu trúc CHÍNH theo OF (Major/Minor/False ChoCH/CHoCH) — mainStruct() ở trên, luật chốt 20/11 (phải khớp Pine)
-    const MSE = mainStruct(c, ms);
+    const MSE = mainStruct(c, ms, EQT);
     for (let i = 1, q = 0; i < c.length; i++) {
       const m = ms[i];
       if (m.nTop) res.events.push({ i: m.oTopI, kind: m.topHH ? "HH" : "LH", p: m.oTop, side: "top" });
