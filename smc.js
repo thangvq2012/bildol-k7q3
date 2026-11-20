@@ -763,7 +763,9 @@ const SMC = (() => {
         continue;
       }
       // mức phá lệch đỉnh chính ≤ eqTol vẫn là phá đỉnh chính (A.7 "bằng nhau": smcCore giữ mốc ở đỉnh đầu)
-      if (evDir === s && s * m.brk >= ext - eqTol - 1e-9) {
+      // 20/11 21:00: structure() cùng chiều cấu trúc chính (không nhịp phụ) báo BOS thường (|ev|=1) → luôn là phá đáy/đỉnh chính,
+      // kể cả khi râu đã quét sâu hơn mốc > eqTol mà structure() vẫn giữ mốc (A.7 nến quét) — ca 06:50/08:15 FXCM 5m 20/11
+      if (evDir === s && ((!sb && Math.abs(m.ev) === 1) || s * m.brk >= ext - eqTol - 1e-9)) {
         // đáy hồi = đúng HL/LH mà structure() vừa đánh dấu (cùng mốc nó dùng để báo phá ngược chiều); thiếu thì dùng râu thấp nhất
         const sp = s === 1 ? m.oBot : m.oTop != null ? -m.oTop : null, P = sp != null ? sp : pc, PI = sp != null ? (s === 1 ? m.oBotI : m.oTopI) : pcI;
         const O = stk[stk.length - 1], T = ext, pct = T - O.p > 0 ? (T - P) / (T - O.p) : 1;
@@ -777,7 +779,7 @@ const SMC = (() => {
         // cú phá ngược chiều ĐẦU TIÊN ở đáy minor → False ChoCH, mở nhịp phụ (gốc = đỉnh chính)
         evs.push({ i, kind: "False ChoCH", fake: true, dir: -s, p: m.brk, from: m.brkI, r, of: [s * stk[stk.length - 1].p, s * ext], maj: s * maj });
         sb = true; sstk = [{ p: -ext, i: extI }]; sx = -pc; sReset = true;
-      } else if (evDir === -s && sb && -s * m.brk >= sx - eqTol - 1e-9) {
+      } else if (evDir === -s && sb && (Math.abs(m.ev) === 1 || -s * m.brk >= sx - eqTol - 1e-9)) {
         // cú phá thứ 2 trở đi cùng chiều nhịp phụ → Minor/Major theo OF phụ (gốc trong cùng → đáy thấp nhất, hồi = LH/HL của structure())
         const sp = s === 1 ? (m.oTop != null ? -m.oTop : null) : m.oBot, P = sp != null ? sp : -ph, PI = sp != null ? (s === 1 ? m.oTopI : m.oBotI) : phI;
         const O = sstk[sstk.length - 1], pct = sx - O.p > 0 ? (sx - P) / (sx - O.p) : 1;
