@@ -745,14 +745,16 @@ const SMC = (() => {
       }
       const evDir = m.ev ? (m.ev > 0 ? 1 : -1) : 0;
       const chA = C < maj;
-      let r = null;
+      let r = null, mnB = false;
       if (!chA) {
+        // 22/11 (người dùng): mức bị phá là đáy/đỉnh MINOR (đáy hồi của cú Minor, còn trong stk) → luôn False ChoCH, dù OF đã kéo dài
+        if (evDir === -s) mnB = stk.slice(1).some((e) => e.i === m.brkI || Math.abs(e.p - s * m.brk) <= eqTol);
         // OF chết khi đóng cửa dưới gốc (gốc major ở đáy mảng không bao giờ bị xoá ở đây vì C ≥ maj)
         while (stk.length > 1 && C < stk[stk.length - 1].p) stk.pop();
         // phá ngược chiều: mức bị phá đã khai thác ≥50% OF trong cùng còn sống (gốc → cực trị) → đó là đáy MAJOR → CHoCH
         if (evDir === -s) { const O = stk[stk.length - 1].p; r = ext - O > 0 ? (ext - s * m.brk) / (ext - O) : 1; }
       }
-      if (chA || (evDir === -s && r >= 0.5)) {
+      if (chA || (evDir === -s && r >= 0.5 && !mnB)) {
         // CHoCH thật → đảo chiều; mọi giá trị đổi dấu sang hệ của chiều mới
         evs.push({ i, kind: "CHoCH", dir: -s, p: chA ? s * maj : m.brk, from: chA ? majI : m.brkI, r, of: chA ? null : [s * stk[stk.length - 1].p, s * ext], maj: s * maj });
         // nhịp phụ (nếu có) trở thành cấu trúc chính, giữ các đỉnh minor/major của nó
