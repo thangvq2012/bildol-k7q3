@@ -754,7 +754,14 @@ const SMC = (() => {
         // phá ngược chiều: mức bị phá đã khai thác ≥50% OF trong cùng còn sống (gốc → cực trị) → đó là đáy MAJOR → CHoCH
         if (evDir === -s) { const O = stk[stk.length - 1].p; r = ext - O > 0 ? (ext - s * m.brk) / (ext - O) : 1; }
       }
-      if (chA || (evDir === -s && r >= 0.5 && !mnB)) {
+      // 22/11 17:08 (người dùng): đang NHỊP PHỤ, cú phá cùng chiều nhịp phụ mà đáy hồi phụ chưa tới 50% OF phụ → Minor (phụ), KHÔNG CHoCH
+      // (hồi ≥50% OF phụ vẫn xét CHoCH theo nhánh b như ca 13:00 20/11)
+      let sPct = null;
+      if (sb && evDir === -s && !chA && (Math.abs(m.ev) === 1 || -s * m.brk >= sx - eqTol - 1e-9)) {
+        const sp0 = s === 1 ? (m.oTop != null ? -m.oTop : null) : m.oBot, P0 = sp0 != null ? sp0 : -ph, O0 = sstk[sstk.length - 1];
+        sPct = sx - O0.p > 0 ? (sx - P0) / (sx - O0.p) : 1;
+      }
+      if (chA || (evDir === -s && r >= 0.5 && !mnB && !(sPct != null && sPct < 0.5))) {
         // CHoCH thật → đảo chiều; mọi giá trị đổi dấu sang hệ của chiều mới
         evs.push({ i, kind: "CHoCH", dir: -s, p: chA ? s * maj : m.brk, from: chA ? majI : m.brkI, r, of: chA ? null : [s * stk[stk.length - 1].p, s * ext], maj: s * maj });
         // nhịp phụ (nếu có) trở thành cấu trúc chính, giữ các đỉnh minor/major của nó
