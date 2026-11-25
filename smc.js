@@ -73,8 +73,10 @@ const SMC = (() => {
       // Hình thành đủ theo A.7 + làm rõ 11/11: đã có nến XÁC NHẬN (nến tạo cùng loại kế tiếp, giữa không có nến tạo ngược loại).
       // Dùng cho việc GIỮ MỐC khi bị râu quét; phá cấu trúc vẫn đòi nhịp hồi 3.2 (pullUp/pullDn). Sửa 11/11 chiều, ca 10/11 18:00–20:30 M15.
       const upCf = upTfI != null && lastTfI > upTfI && !(lastBfI > upTfI), dnCf = dnBfI != null && lastBfI > dnBfI && !(lastTfI > dnBfI);
-      const pullUp = upTemp && upTfI != null && loUpI != null && loUpI > upI && lastBfI > upTfI && lastBfI >= loUpI;
-      const pullDn = dnTemp && dnBfI != null && hiDnI != null && hiDnI > dnI && lastTfI > dnBfI && lastTfI >= hiDnI;
+      const pullUp = upTemp && upTfI != null && loUpI != null && loUpI > upI && ((lastBfI > upTfI && lastBfI >= loUpI) || (k.close > up && k.close > k.open));
+      const pullDn = dnTemp && dnBfI != null && hiDnI != null && hiDnI > dnI && ((lastTfI > dnBfI && lastTfI >= hiDnI) || (k.close < dn && k.close < k.open));
+      // 25/11 (người dùng: bổ sung mapping thiếu, ca 03:15 TVC 15m 25/11): có nến tạo ngược chiều + cực trị hồi, cây ĐÓNG CỬA PHÁ mốc có thân
+      // cùng chiều phá thì tính là kết thúc nhịp hồi — không cần thêm nến tạo đỉnh/đáy (định nghĩa nến tạo KHÔNG đổi).
       if (up != null && k.close > up && (upTemp ? pullUp : loUpI != null)) {
         brk = up; brkI = upI;
         if (upTemp) { nTop = true; topHH = oTop == null || up > oTop; oTop = up; oTopI = upI; }
