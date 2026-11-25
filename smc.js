@@ -724,6 +724,11 @@ const SMC = (() => {
     // (hệ giá trị nhân -s). sstk[0] = đỉnh chính lúc bắt đầu (hoặc đỉnh hồi của cú Major phụ). Kết thúc khi phá đỉnh chính
     // (BOS chính) hoặc thành cấu trúc chính khi CHoCH.
     let sb = false, sstk = [], sx = null;
+    // 25/11 (người dùng): QUAY LẠI CẤU TRÚC CŨ. rh = mọi đỉnh/đáy gốc của cấu trúc hiện tại (kể cả gốc đã bị cú Major xoá khỏi stk),
+    // chết khi có nến ĐÓNG CỬA vượt. Sau CHoCH giữ lại cấu trúc cũ (oS/oRh/oStk); chiều mới CHƯA có cú phá cùng chiều nào mà giá
+    // ĐÓNG CỬA vượt cực trị cũ (= mốc major mới) → về cấu trúc cũ: nhãn Major/Minor theo OF cũ (gốc trong cùng còn sống của cấu trúc cũ
+    // → cực trị cũ), hồi = cực trị của nhịp CHoCH; KHÔNG phải CHoCH. Ca 06:15/07:15 15m 25/11: OF 3575 → đáy, hồi ≥50% → Major.
+    let rh = [], oS = 0, oRh = null, oStk = null;
     for (let i = 1; i < c.length; i++) {
       const k = c[i], m = ms[i] || {};
       if (s === 0) {
@@ -732,9 +737,25 @@ const SMC = (() => {
         maj = s === 1 ? m.oBot : -m.oTop; majI = s === 1 ? m.oBotI : m.oTopI; stk = [{ p: maj, i: majI }];
         ext = s === 1 ? k.high : -k.low; extI = i; pull = Infinity; pullI = null; pHi = -Infinity; pHiI = null;
         evs.push({ i, kind: Math.abs(m.ev) === 2 ? "CHoCH" : "Major", dir: s, p: m.brk, from: m.brkI });
+        rh = [{ p: maj, i: majI }];
         continue;
       }
       const H = s === 1 ? k.high : -k.low, L = s === 1 ? k.low : -k.high, C = s * k.close;
+      rh = rh.filter((e) => C >= e.p); if (rh.length > 40) rh = rh.slice(-40);
+      if (oRh) oRh = oRh.filter((e) => -C >= e.p);
+      // về cấu trúc cũ: đóng cửa vượt cực trị cũ (mốc major hiện tại = stk[0] do CHoCH đặt), hoặc smcCore báo phá đúng mức đó
+      if (oRh && (C < maj || ((m.ev > 0 ? 1 : m.ev < 0 ? -1 : 0) === -s && (m.brkI === majI || Math.abs(s * m.brk - maj) <= eqTol)))) {
+        const T = -maj, Pb = -ext, PbI = extI, O = oRh.length ? oRh[oRh.length - 1] : { p: oStk[0].p, i: oStk[0].i };
+        const pct = T - O.p > 0 ? (T - Pb) / (T - O.p) : 1;
+        evs.push({ i, kind: pct >= 0.5 ? "Major" : "Minor", dir: oS, p: oS * T, from: majI, pct, of: [oS * O.p, oS * T], pb: oS * Pb, back: true });
+        s = oS;
+        if (pct >= 0.5) { maj = Pb; majI = PbI; stk = [{ p: Pb, i: PbI }]; }
+        else { maj = O.p; majI = O.i; stk = [{ p: O.p, i: O.i }, { p: Pb, i: PbI }]; }
+        rh = [...oRh, { p: Pb, i: PbI }];
+        ext = s === 1 ? k.high : -k.low; extI = i; pull = Infinity; pullI = null; pHi = -Infinity; pHiI = null;
+        sb = false; sstk = []; sx = null; oS = 0; oRh = null; oStk = null;
+        continue;
+      }
       // râu hồi thấp nhất kể từ đỉnh (tính cả cây hiện tại) + đỉnh cao nhất kể từ râu hồi đó
       let pc = pull, pcI = pullI, ph = pHi, phI = pHiI;
       if (L < pc) { pc = L; pcI = i; ph = -Infinity; phI = null; } else if (H > ph) { ph = H; phI = i; }
@@ -776,6 +797,7 @@ const SMC = (() => {
         // mốc major mới = cực trị cũ (vd. đáy thấp nhất 3514,54), trừ khi nhịp phụ đã có cú Major (sstk[0] = đỉnh hồi major của nó)
         const nStk = sb ? (sstk[0].mj ? sstk : [{ p: -ext, i: extI }, ...sstk.slice(1)]) : [{ p: -ext, i: extI }];
         const nExt = -pc, nExtI = pcI, nPull = phI == null ? Infinity : -ph, nPullI = phI;
+        oS = s; oRh = rh.slice(); oStk = stk.slice(); rh = nStk.map((e) => ({ p: e.p, i: e.i }));
         s = -s; stk = nStk; maj = stk[0].p; majI = stk[0].i; ext = nExt; extI = nExtI;
         pull = nPull; pullI = nPullI; pHi = -Infinity; pHiI = null; sb = false; sstk = []; sx = null;
         continue;
@@ -789,6 +811,7 @@ const SMC = (() => {
         const sp = s === 1 ? m.oBot : m.oTop != null ? -m.oTop : null, P = sp != null ? sp : pc, PI = sp != null ? (s === 1 ? m.oBotI : m.oTopI) : pcI;
         const O = stk[stk.length - 1], T = ext, pct = T - O.p > 0 ? (T - P) / (T - O.p) : 1;
         if (pct >= 0.5) { maj = P; majI = PI; stk = [{ p: P, i: PI }]; } else stk.push({ p: P, i: PI });
+        rh.push({ p: P, i: PI }); oS = 0; oRh = null; oStk = null;
         evs.push({ i, kind: pct >= 0.5 ? "Major" : "Minor", dir: s, p: m.brk, from: m.brkI, pct, of: [s * O.p, s * T], pb: s * P });
         ext = H; extI = i; pull = Infinity; pullI = null; pHi = -Infinity; pHiI = null; sb = false; sstk = []; sx = null;
         continue;
