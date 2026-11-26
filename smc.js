@@ -748,12 +748,15 @@ const SMC = (() => {
         const T = -maj, Pb = -ext, PbI = extI, O = oRh.length ? oRh[oRh.length - 1] : { p: oStk[0].p, i: oStk[0].i };
         const pct = T - O.p > 0 ? (T - Pb) / (T - O.p) : 1;
         evs.push({ i, kind: pct >= 0.5 ? "Major" : "Minor", dir: oS, p: oS * T, from: majI, pct, of: [oS * O.p, oS * T], pb: oS * Pb, back: true });
+        // 26/11 (người dùng: "sau CHoCH thì phải là minor/major nếu cấu trúc tiếp diễn sau CHoCH"): cấu trúc vừa rời (chiều CHoCH) trở thành
+        // "cấu trúc cũ" — giá quay lại phá cực trị của nhịp về (mốc major mới) khi chưa có cú phá cùng chiều nào → lại là Major/Minor, không CHoCH.
+        const lS = s, lRh = rh.slice(), lStk = stk.slice();
         s = oS;
         if (pct >= 0.5) { maj = Pb; majI = PbI; stk = [{ p: Pb, i: PbI }]; }
         else { maj = O.p; majI = O.i; stk = [{ p: O.p, i: O.i }, { p: Pb, i: PbI }]; }
         rh = [...oRh, { p: Pb, i: PbI }];
         ext = s === 1 ? k.high : -k.low; extI = i; pull = Infinity; pullI = null; pHi = -Infinity; pHiI = null;
-        sb = false; sstk = []; sx = null; oS = 0; oRh = null; oStk = null;
+        sb = false; sstk = []; sx = null; oS = lS; oRh = lRh; oStk = lStk;
         continue;
       }
       // râu hồi thấp nhất kể từ đỉnh (tính cả cây hiện tại) + đỉnh cao nhất kể từ râu hồi đó
